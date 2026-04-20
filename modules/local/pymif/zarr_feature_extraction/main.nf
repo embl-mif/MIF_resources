@@ -12,7 +12,7 @@ process FEATURE_EXTRACTION {
 
     script:
     """
-    run_measurement.py \
+    feature_extract.py \
         -z input.zarr \
         -o "${meta.well}_${meta.field}.csv"
     """
