@@ -1,0 +1,34 @@
+name: "zarr_feature_extraction"
+description: Extract features from Zarr microscopy datasets using pymif and scikit-image
+keywords:
+  - zarr
+  - feature_extraction
+  - microscopy
+  - python
+tools:
+  - "pymif":
+      description: "Python Microscope File manager for high-content screening data."
+      homepage: "https://github.com/grinic/pymif"
+      documentation: "https://github.com/grinic/pymif"
+      tool_dev_url: "https://github.com/grinic/pymif"
+      licence: ["MIT"]
+
+input:
+  - meta:
+      type: map
+      description: |
+        Groovy Map containing sample information
+        e.g. [ id:'test', exp_name:'...', well:'...', field:'...' ]
+  - zarr:
+      type: file
+      description: Input Zarr dataset
+      pattern: "*.{zarr}"
+output:
+  - meta:
+      type: map
+      description: |
+        Groovy Map containing sample information
+  - csv:
+      type: file
+      description: Extracted features in CSV format
+      pattern: "*.{csv}"
