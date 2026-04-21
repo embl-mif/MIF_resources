@@ -1,5 +1,5 @@
 process ZARR_FEATURE_EXTRACTION {
-    tag "${meta.id}
+    tag "${meta.id}"
 
     label 'process_medium'
 
