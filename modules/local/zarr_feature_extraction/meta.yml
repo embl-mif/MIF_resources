@@ -1,34 +1,43 @@
 name: "zarr_feature_extraction"
-description: Extract features from Zarr microscopy datasets using pymif and scikit-image
+description: "Extracts morphological and intensity features from Zarr labeled datasets using skimage regionprops."
 keywords:
   - zarr
-  - feature_extraction
   - microscopy
-  - python
+  - feature-extraction
+  - skimage
+  - regionprops
+  - dask
 tools:
-  - "pymif":
-      description: "Python Microscope File manager for high-content screening data."
-      homepage: "https://github.com/grinic/pymif"
-      documentation: "https://github.com/grinic/pymif"
-      tool_dev_url: "https://github.com/grinic/pymif"
-      licence: ["MIT"]
-
+  - name: "scikit-image"
+    description: "A collection of algorithms for image processing."
+    homepage: "https://scikit-image.org/"
+  - name: "dask"
+    description: "Flexible library for parallel computing in Python."
+    homepage: "https://dask.org/"
 input:
   - meta:
       type: map
       description: |
-        Groovy Map containing sample information
-        e.g. [ id:'test', exp_name:'...', well:'...', field:'...' ]
-  - zarr:
-      type: file
-      description: Input Zarr dataset
-      pattern: "*.{zarr}"
+        Groovy Map containing sample information.
+        e.g. [ id:'sample1' ]
+  - zarr_store:
+      type: path
+      description: "Input Zarr store directory."
+  - intensity_comp:
+      type: string
+      description: "Internal Zarr path or component name for intensity data."
+  - label_comp:
+      type: string
+      description: "Internal Zarr path or component name for labels."
 output:
   - meta:
       type: map
       description: |
-        Groovy Map containing sample information
-  - csv:
+        Groovy Map containing sample information.
+  - parquet:
       type: file
-      description: Extracted features in CSV format
-      pattern: "*.{csv}"
+      description: "Extracted features in Parquet format."
+      pattern: "*.features.parquet"
+authors:
+  - "nvivanco"
+  - "grinic"
