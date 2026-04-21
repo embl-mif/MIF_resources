@@ -22,7 +22,7 @@ process ZARR_FEATURE_EXTRACTION {
     def prefix = task.ext.prefix ?: "${meta.id}"
 
     """
-    feature_extract.py \
+    zarr_feature_extraction.py \
         -z ${zarr_store} \
         -o ${meta.id}.features.parquet \
         --intensity "${intensity_comp}" \
