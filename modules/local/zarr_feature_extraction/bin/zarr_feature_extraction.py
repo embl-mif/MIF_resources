@@ -20,19 +20,31 @@ logging.basicConfig(
 
 def get_ome_zarr_array(input_zarr, component_path):
     """
-    Parses OME-Zarr V5 metadata to find the specific array node.
+    Parses OME-Zarr metadata, flexibly matching the intensity component.
     """
     reader = Reader(parse_url(input_zarr))
-    # Iterate through nodes to find the one matching your path/component
-    for node in reader():
-        # component_path usually looks like '0' or 'labels/nuclei'
-        if component_path in node.path:
-            # node.data is a list of dask arrays (pyramid levels)
-            # node.data[0] is typically the full-resolution image
-            return node.data[0]
+    nodes = list(reader())
     
-    raise ValueError(f"Could not find component '{component_path}' in OME-Zarr V5 store.")
+    # Debug print to confirm exactly what we are seeing
+    # print(f"DEBUG: Looking for '{component_path}' in nodes with paths: {[getattr(n.zarr, 'path', 'root') for n in nodes]}")
 
+    for node in nodes:
+        node_path = getattr(node.zarr, 'path', '')
+        
+        # 1. Exact match (standard case)
+        if component_path == node_path:
+            return node.data[0]
+            
+        # 2. Relaxed match: If we are looking for '0' and it's the root node
+        # (detected by checking if it's the only node or contains the filename)
+        if component_path == "0" and (node_path == "" or input_zarr in node_path):
+            return node.data[0]
+            
+        # 3. Handle 'labels/nuclei' (path-based match)
+        if component_path in node_path:
+            return node.data[0]
+            
+    raise ValueError(f"Could not find component '{component_path}'. Available paths: {[getattr(n.zarr, 'path', 'root') for n in nodes]}")
 @dask.delayed
 def process_plane(intensity_plane, label_plane, z_index):
     # Convert CZYX -> YXC for skimage
@@ -56,7 +68,8 @@ def run_measurement(input_zarr, output_path, intensity_path, label_path):
         logging.info(f"Opening OME-Zarr V5 store: {input_zarr}")
         
         # Use the specialized reader instead of da.from_zarr
-        intensity_stack = get_ome_zarr_array(input_zarr, intensity_path)
+        intensity_stack_all_ch = get_ome_zarr_array(input_zarr, intensity_path)
+        intensity_stack = intensity_stack_all_ch[:, 0, :, :, :]# make arg later, defaults to 0 now
         label_stack = get_ome_zarr_array(input_zarr, label_path)
 
         # Ensure shapes match (using Y, X, C order)
