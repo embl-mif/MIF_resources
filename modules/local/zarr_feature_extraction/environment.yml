@@ -4,8 +4,9 @@ channels:
   - nodefaults
 dependencies:
   - python=3.12
-  - zarr=2.17.0
-  - dask=2025.1.0
-  - scikit-image=0.23.0
-  - pandas=2.2.0
+  - ome_zarr
+  - zarr
+  - dask
+  - scikit-image
+  - pandas
   - pyarrow
