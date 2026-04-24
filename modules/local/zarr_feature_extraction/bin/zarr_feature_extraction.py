@@ -47,14 +47,20 @@ def get_ome_zarr_array(input_zarr, component_path):
     raise ValueError(f"Could not find component '{component_path}'. Available paths: {[getattr(n.zarr, 'path', 'root') for n in nodes]}")
 @dask.delayed
 def process_plane(intensity_plane, label_plane, z_index):
-    # Convert CZYX -> YXC for skimage
-    intensity_img = intensity_plane.transpose(1, 2, 0)
-    
+    # Convert CYX -> YXC for skimage
+    if intensity_plane.ndim == 3:
+        # If it has a channel axis, move it to the back
+        intensity_img = da.moveaxis(intensity_plane, 0, -1).compute()
+    else:
+        # If it's already 2D (YX), just compute
+        intensity_img = intensity_plane.compute()
+    #Label plane is usually YX, just compute
+    label_img = label_plane.compute()
     table = regionprops_table(
-        label_image=label_plane, 
-        intensity_image=intensity_img, 
+        label_image=label_img,
+        intensity_image=intensity_img,
         properties=[
-            "label", "area", "centroid", "intensity_mean", 
+            "label", "area", "centroid", "intensity_mean",
             "intensity_max", "intensity_min", "intensity_std", "moments"
         ]
     )
@@ -65,25 +71,24 @@ def process_plane(intensity_plane, label_plane, z_index):
 
 def run_measurement(input_zarr, output_path, intensity_path, label_path):
     try:
-        logging.info(f"Opening OME-Zarr V5 store: {input_zarr}")
+        logging.info(f"Opening OME-Zarr: {input_zarr}")
         
-        # Use the specialized reader instead of da.from_zarr
-        intensity_stack_all_ch = get_ome_zarr_array(input_zarr, intensity_path)
-        intensity_stack = intensity_stack_all_ch[:, 0, :, :, :]# make arg later, defaults to 0 now
+    
+        #·Assuming·TCZYX, pymif writer output
+        intensity_stack = get_ome_zarr_array(input_zarr, intensity_path)
         label_stack = get_ome_zarr_array(input_zarr, label_path)
 
-        # Ensure shapes match (using Y, X, C order)
-        if intensity_stack.shape[1:3] != label_stack.shape[1:3]:
-            raise ValueError(f"Shape mismatch: Intensity {intensity_stack.shape} vs Labels {label_stack.shape}")
-
-        n_planes = label_stack.shape[0]
-        logging.info(f"Found {n_planes} planes. Launching Dask tasks...")
+        # Select first channel, iterate over Z axis
+        channel = 0 # make arg later?
+        intensity_sliceable = intensity_stack[:, channel, :, :, :]
+        n_planes = label_stack.shape[1] # Z is index 1
+        logging.info(f"Found {n_planes} Z planes. Launching Dask tasks...")
 
         tasks = []
         for i in range(n_planes):
             tasks.append(process_plane(
-                intensity_stack[:, i, ...], 
-                label_stack[i, ...], 
+                intensity_stack[0, channel, i, :, :], 
+                label_stack[0, i, :, :], 
                 i
             ))
 
