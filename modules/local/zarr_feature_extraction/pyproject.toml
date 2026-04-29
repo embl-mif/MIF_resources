@@ -1,0 +1,30 @@
+[project]
+name = "zarr_feature_extraction"
+version = "0.1.0"
+description = "Extract region properties from OME-Zarr intensity and label data and write Parquet output."
+requires-python = ">=3.12"
+readme = ""
+license = { text = "MIT" }
+authors = [
+  { name = "mif_resources" }
+]
+dependencies = [
+  "dask[array]",
+  "numpy",
+  "pandas",
+  "pyarrow",
+  "scikit-image",
+  "zarr",
+]
+
+[project.scripts]
+zarr-feature-extraction = "zarr_feature_extraction.cli:main"
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
