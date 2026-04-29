@@ -20,13 +20,16 @@ process ZARR_FEATURE_EXTRACTION {
 
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
+    def nextflowManagedArg = (task.ext.nextflow_managed != null ? (task.ext.nextflow_managed ? '--nextflow-managed' : '') : '--nextflow-managed')
 
     """
-    zarr_feature_extraction.py \
+    python -m zarr_feature_extraction.cli \
         -z ${zarr_store} \
         -o ${meta.id}.features.parquet \
         --intensity "${intensity_comp}" \
-        --labels "${label_comp}"
+        --segmentation "${label_comp}" \
+        ${nextflowManagedArg} \
+        ${args}
     """
 
     stub:

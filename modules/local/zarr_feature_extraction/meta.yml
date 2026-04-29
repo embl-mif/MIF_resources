@@ -1,5 +1,5 @@
 name: "zarr_feature_extraction"
-description: "Extracts morphological and intensity features from Zarr labeled datasets using skimage regionprops."
+description: "Extracts morphological and intensity features from Zarr labeled datasets using skimage regionprops. Uses the package CLI with Nextflow-managed single-threaded Dask execution by default."
 keywords:
   - zarr
   - microscopy
@@ -28,7 +28,7 @@ input:
       description: "Internal Zarr path or component name for intensity data."
   - label_comp:
       type: string
-      description: "Internal Zarr path or component name for labels."
+      description: "Internal Zarr path or component name for segmentation labels."
 output:
   - meta:
       type: map
