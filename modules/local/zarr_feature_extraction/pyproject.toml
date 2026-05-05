@@ -18,12 +18,15 @@ dependencies = [
 ]
 
 [project.scripts]
-zarr-feature-extraction = "zarr_feature_extraction.cli:main"
+extract-features = "zarr_features.cli:main"
 
 [project.optional-dependencies]
 test = [
   "pytest",
 ]
+
+[tool.setuptools]
+package-dir = {"" = "resources/usr/lib"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

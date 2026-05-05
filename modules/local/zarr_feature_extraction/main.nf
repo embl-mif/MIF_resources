@@ -23,7 +23,7 @@ process ZARR_FEATURE_EXTRACTION {
     def nextflowManagedArg = (task.ext.nextflow_managed != null ? (task.ext.nextflow_managed ? '--nextflow-managed' : '') : '--nextflow-managed')
 
     """
-    python -m zarr_feature_extraction.cli \
+    extract-features \
         -z ${zarr_store} \
         -o ${meta.id}.features.parquet \
         --intensity "${intensity_comp}" \
