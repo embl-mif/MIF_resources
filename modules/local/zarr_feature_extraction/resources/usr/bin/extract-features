@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+import sys
+import os
+
+bin_dir = os.path.dirname(os.path.realpath(__file__))
+lib_path = os.path.abspath(os.path.join(bin_dir, "..", "lib"))
+
+# Add the lib path so Python can see the 'zarr_features' folder
+sys.path.append(lib_path)
+
+from zarr_features.cli import main
+
+if __name__ == "__main__":
+    sys.exit(main())
