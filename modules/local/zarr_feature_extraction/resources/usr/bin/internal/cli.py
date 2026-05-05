@@ -1,7 +1,7 @@
 import argparse
 import logging
 
-from . import DEFAULT_FEATURES, build_label_path, parse_properties, run_measurement, setup_logging
+from .feature_extraction_logic import DEFAULT_FEATURES, build_label_path, parse_properties, run_measurement, setup_logging
 
 
 def main() -> int:
@@ -61,7 +61,3 @@ def main() -> int:
         return 1
 
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
