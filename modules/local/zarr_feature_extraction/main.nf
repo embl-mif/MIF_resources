@@ -35,6 +35,6 @@ process ZARR_FEATURE_EXTRACTION {
     stub:
     def prefix = task.ext.prefix ?: "${meta.id}"
     """
-    touch "${prefix}.features.parquet"
+    touch "${meta.id}.features.parquet"
     """
 }
