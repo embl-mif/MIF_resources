@@ -11,14 +11,17 @@ params.intensity = "0"
 params.labels    = "nuclei"
 
 workflow {
+    println "DEBUG: outdir    = ${params.outdir}"
+    println "DEBUG: intensity = ${params.intensity}"
+    println "DEBUG: labels    = ${params.labels}"
 
     zarr_ch = Channel
         .fromPath(test_zarr, type: 'dir', checkIfExists: true)
         .map { it -> [ [ id: it.baseName, exp_name: 'test_exp' ], it ] }
 
-    ZARR_FEATURE_EXTRACTION ( 
-        zarr_ch, 
-        params.intensity, 
-        params.labels 
+    ZARR_FEATURE_EXTRACTION (
+        zarr_ch,
+        params.intensity,
+        params.labels
     )
 }
