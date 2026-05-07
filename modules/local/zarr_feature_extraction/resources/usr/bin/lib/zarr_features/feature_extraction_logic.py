@@ -27,28 +27,6 @@ def parse_properties(properties: str) -> list[str]:
     return [item.strip() for item in properties.split(",") if item.strip()]
 
 
-def validate_zarr_components(input_zarr: str, intensity_path: str, label_path: str) -> zarr.Group:
-    if not os.path.exists(input_zarr):
-        raise FileNotFoundError(f"Input Zarr path does not exist: {input_zarr}")
-
-    try:
-        group = zarr.open_group(input_zarr, mode="r")
-    except Exception as exc:
-        raise RuntimeError(f"Could not open Zarr group at {input_zarr}: {exc}") from exc
-
-    missing = []
-    for component in (intensity_path, label_path):
-        try:
-            group[component]
-        except KeyError:
-            missing.append(component)
-
-    if missing:
-        raise ValueError(f"Missing Zarr components: {', '.join(missing)}")
-
-    return group
-
-
 def make_output_parent(output_path: str) -> None:
     parent_dir = os.path.dirname(os.path.abspath(output_path))
     if parent_dir and not os.path.isdir(parent_dir):
@@ -75,6 +53,24 @@ def prepare_intensity_image(intensity_t: np.ndarray, labels_shape: tuple[int, ..
 
     return intensity
 
+def resolve_zarr_path(input_zarr: str, user_path: str) -> str:
+    """
+    Dives into an OME-Zarr hierarchy to find the data array.
+    Assumes if a path is a Group, the data lives in sub-key '0'.
+    """
+    store = zarr.open(input_zarr, mode="r")
+    
+    # Access the node (e.g., 'labels/nuclei' or '0')
+    node = store[user_path]
+    
+    if isinstance(node, zarr.Group):
+        if "0" in node:
+            # Return the combined path for Dask
+            return f"{user_path}/0"
+        else:
+            raise ValueError(f"Group at '{user_path}' has no '0' array.")
+            
+    return user_path
 
 def run_measurement(
     input_zarr: str,
@@ -90,11 +86,20 @@ def run_measurement(
     dask.config.set(scheduler=scheduler)
     logger = logging.getLogger(__name__)
 
-    validate_zarr_components(input_zarr, intensity_path, label_path)
     make_output_parent(output_parquet)
+    # Resolve group paths to array paths
+    try:
+        final_intensity_path = resolve_zarr_path(input_zarr, intensity_path)
+        final_label_path = resolve_zarr_path(input_zarr, label_path)
+    except (KeyError, ValueError) as e:
+        logger.error("Path resolution failed: %s", e)
+        raise
 
-    intensity_stack = da.from_zarr(input_zarr, component=intensity_path)
-    label_stack = da.from_zarr(input_zarr, component=label_path)
+    logger.info("Resolved paths: Intensity -> %s, Labels -> %s", 
+                final_intensity_path, final_label_path)
+
+    intensity_stack = da.from_zarr(input_zarr, component=final_intensity_path)
+    label_stack = da.from_zarr(input_zarr, component=final_label_path)
 
     if label_stack.shape[0] != intensity_stack.shape[0]:
         raise ValueError(
