@@ -3,7 +3,7 @@ process ZARR_FEATURE_EXTRACTION {
 
     label 'process_medium'
 
-    conda "/home/vivanco/mif_resources/modules/local/zarr_feature_extraction/environment.yml"
+    conda "${moduleDir}/environment.yml"
 
     input:
     tuple val(meta), path(zarr_store)
@@ -23,9 +23,8 @@ process ZARR_FEATURE_EXTRACTION {
     def nextflowManagedArg = (task.ext.nextflow_managed != null ? (task.ext.nextflow_managed ? '--nextflow-managed' : '') : '--nextflow-managed')
 
     """
-    echo "DEBUG: Running extract-features for ID: ${meta.id}"
-    echo "DEBUG: Intensity: ${intensity_comp}, Labels: ${label_comp}"
-    extract-features \
+    export MODULE_LIB="${moduleDir}/resources/usr/bin/lib"
+    extract_features.py \
         -z ${zarr_store} \
         -o ${prefix}.features.parquet \
         --intensity "${intensity_comp}" \
