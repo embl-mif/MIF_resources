@@ -2,8 +2,7 @@
 import sys
 import os
 
-bin_dir = os.path.dirname(os.path.realpath(__file__))
-lib_path = os.path.abspath(os.path.join(bin_dir, "..", "lib"))
+lib_path = os.environ.get('MODULE_LIB')
 
 # Add the lib path so Python can see the 'zarr_features' folder
 sys.path.append(lib_path)
