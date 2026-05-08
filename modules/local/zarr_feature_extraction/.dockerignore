@@ -1,0 +1,23 @@
+# Ignore git metadata
+.git
+.gitignore
+
+# Ignore Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+env/
+venv/
+
+# Ignore local data and logs
+*.log
+*.parquet
+*.zarr/
+temp/
+output/
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
