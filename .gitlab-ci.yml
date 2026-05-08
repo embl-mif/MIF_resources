@@ -14,16 +14,8 @@ build-zarr-extraction:
   script:
     # Prepare Docker authentication for the GitLab Container Registry
     - mkdir -p /kaniko/.docker
-    - - |
-      echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 -w 0)\"}}}" > /kaniko/.docker/config.json
-    - /kaniko/executor \
-      --context "${CI_PROJECT_DIR}/${MODULE_PATH}" \
-      --dockerfile "${CI_PROJECT_DIR}/${MODULE_PATH}/Dockerfile" \
-      --destination "${CI_REGISTRY_IMAGE}/containers/${IMAGE_NAME}:latest" \
-      --destination "${CI_REGISTRY_IMAGE}/containers/${IMAGE_NAME}:${RELEASE_TAG}" \
-      --destination "${CI_REGISTRY_IMAGE}/containers/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}" \
-      --cache=true \
-      --cache-repo="${CI_REGISTRY_IMAGE}/containers/${IMAGE_NAME}/cache"
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 -w 0)\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor --context "${CI_PROJECT_DIR}/${MODULE_PATH}" --dockerfile "${CI_PROJECT_DIR}/${MODULE_PATH}/Dockerfile" --destination "${CI_REGISTRY_IMAGE}/containers/${IMAGE_NAME}:latest" --destination "${CI_REGISTRY_IMAGE}/containers/${IMAGE_NAME}:${RELEASE_TAG}" --destination "${CI_REGISTRY_IMAGE}/containers/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}" --cache=true --cache-repo="${CI_REGISTRY_IMAGE}/containers/${IMAGE_NAME}/cache"
   rules:
     # Only run this job if files within the module directory are modified
     - changes:
