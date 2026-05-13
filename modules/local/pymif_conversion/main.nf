@@ -9,26 +9,37 @@ process PYMIF_CONVERSION {
     tuple val(meta), path(input_csv)
 
     output:
-    tuple val(meta), path("*.ome.zarr"), emit: zarr
+    tuple val(meta), path("*.zarr"), emit: zarr
+    path "versions.yml"           , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
-
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def nextflowManagedArg = (task.ext.nextflow_managed != null ? (task.ext.nextflow_managed ? '--nextflow-managed' : '') : '--nextflow-managed')
+    def software = 'pymif'
 
     """
-    echo "DEBUG: Running pymif batch2zarr for ID: ${meta.id}"
     pymif batch2zarr \
         -i ${input_csv} \
+        ${args}
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        ${software}: \$(python -c 'import pymif; print(pymif.__version__)' 2>/dev/null || echo "unknown")
+    END_VERSIONS
     """
 
     stub:
     def prefix = task.ext.prefix ?: "${meta.id}"
+    def software = 'pymif'
     """
-    touch "${prefix}.ome.zarr"
+    mkdir -p "${prefix}.zarr"
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        ${software}: "stub"
+    END_VERSIONS
     """
 }

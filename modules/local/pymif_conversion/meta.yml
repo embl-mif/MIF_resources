@@ -1,31 +1,40 @@
 name: "pymif_conversion"
-description: "Convert MIF microscope file formats into ome-zarr. Uses CLI PyMIF command."
+description: "Convert microscope datasets listed in a PyMIF batch CSV into OME-Zarr stores."
 keywords:
   - zarr
   - microscopy
   - pymif
+  - conversion
 tools:
   - name: "pymif"
-    description: "Python library for converting MIF microscope file formats into ome-zarr."
+    description: "Python library for converting MIF microscope file formats into OME-Zarr."
     homepage: "https://github.com/grinic/pymif"
+    documentation: "https://grinic.github.io/pymif/"
+    tool_dev_url: "https://github.com/grinic/pymif"
+    licence: ["MIT"]
 input:
   - meta:
       type: map
       description: |
         Groovy Map containing sample information.
         e.g. [ id:'sample1' ]
-  - zarr_store:
-      type: path
-      description: "Input dataset."
+  - input_csv:
+      type: file
+      description: "PyMIF batch CSV describing one or more microscope datasets to convert."
+      pattern: "*.csv"
 output:
   - meta:
       type: map
       description: |
         Groovy Map containing sample information.
-  - parquet:
+  - zarr:
+      type: directory
+      description: "Converted OME-Zarr store or stores."
+      pattern: "*.zarr"
+  - versions:
       type: file
-      description: "Image and metadata converted into ome-zarr format."
-      pattern: "*.ome.zarr"
+      description: "File containing software versions."
+      pattern: "versions.yml"
 authors:
   - "nvivanco"
   - "grinic"
