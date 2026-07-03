@@ -21,10 +21,10 @@ workflow {
         }
 
     // 2. Split tif stack into separate frame slices
-    SLICE_IMAGE(input_ch)
+    slice_output = SLICE_IMAGE(input_ch)
 
     // 3. Flatten out the slice files array and build individual meta tracking components
-    slice_ch = SLICE_IMAGE(input_ch).out.single_slices
+    slice_ch = slice_output.out.single_slices
         .transpose()
         .map { meta, slice_file ->
             // Pull the raw filename identifier (e.g. 't001_c001')
