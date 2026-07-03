@@ -11,6 +11,7 @@ workflow {
         .splitCsv(header: true)
         .map { row ->
             def meta = [
+                id: row.sample,
                 sample: row.sample,
                 exp_name: row.exp_name,
                 csv_axes: row.axes,
@@ -27,18 +28,17 @@ workflow {
     slice_ch = slice_output.out.single_slices
         .transpose()
         .map { meta, slice_file ->
-            // Pull the raw filename identifier (e.g. 't001_c001')
-            def slice_identity = slice_file.baseName.replaceAll("sample_${meta.sample}_", "")
+            def matcher = (slice_file.name =~ /_t(\d+)_z(\d+)_c(\d+)\.tif$/)
+            def slice_identity = matcher ? "t${matcher[0][1]}_z${matcher[0][2]}_c${matcher[0][3]}" : "unknown"
 
-            // Merge original fields into schema mapping meta.id
-            def updated_meta = meta + [ 
-                slice_id: slice_identity,
-                id: "${meta.sample}_${slice_identity}"
+            return [
+                meta + [
+                    slice_id: slice_identity,
+                    id: "${meta.sample}_${slice_identity}"
+                ],
+                slice_file
             ]
-
-            return [ updated_meta, slice_file ]
         }
-
     // 4. Run ilastik for each slice in parallel
     ILASTIK_SEGMENT(slice_ch, params.ilastik_project)
 }
