@@ -2,11 +2,12 @@
 
 nextflow.enable.dsl=2
 
-include { SLICE_IMAGE  } from '../../modules/local/split_channels/main'
-include { ILASTIK_SEGMENT  } from '../../modules/local/ilastik_segment/main'
-include { HYPERSTACK  } from '../../modules/local/hyperstack/main'
+include { PREALLOCATE_OUTPUT_ZARR  } from '../../modules/local/preallocate_output_zarr/main'
+include { TILE_CONSTRUCTOR  } from '../../modules/local/tile_constructor/main'
+include { ILASTIK_SUBREGION_PIXEL_CLASS  } from '../../modules/local/ilastik_segment/main'
+
 workflow {
-    // 1. Ingest raw CSV data rows
+    // 1. Read parent images and metadata from the input CSV file
     input_ch = Channel.fromPath(params.input_csv)
         .splitCsv(header: true)
         .map { row ->
@@ -22,45 +23,45 @@ workflow {
             return [ meta, file(row.file_path) ]
         }
 
-    // 2. Split TCZYX OME-TIFF hyperstack into separate frame slices
-    slice_output = SLICE_IMAGE(input_ch)
+    // Define configuration values
+    def ilastik_project = file(params.ilastik_project)
+    def target_pubdir   = "${params.outdir}/probabilities"
 
-    // 3. Flatten out the slice files array and build individual meta tracking components
-    slice_ch = slice_output.out.single_slices
-        .transpose()
-        .map { meta, slice_file ->
-            def matcher = (slice_file.name =~ /_t(\d+)_z(\d+)_c(\d+)\.tif$/)
-            def channel_string = matcher ? matcher[0][3] : "${meta.target_channel}"
-            def slice_identity = matcher ? "t${matcher[0][1]}_z${matcher[0][2]}_c${channel_string}" : "unknown"
+    // 2. Preallocate the empty OME-Zarr skeleton on the shared disk
+    PREALLOCATE_OUTPUT_ZARR(input_ch, target_pubdir) 
 
-            return [
-                meta + [
-                    slice_id: slice_identity,
-                    channel_idx: channel_string.toInteger(),
-                    id: "${meta.sample}_${slice_identity}"
-                ],
-                slice_file
+    // 3. Slice the parent images into coordinate tiles (outputs a tiles CSV)
+    TILE_CONSTRUCTOR(input_ch)
+    
+    // 4. Parse the generated tiles CSV into individual task metadata
+    ch_image_tiles = TILE_CONSTRUCTOR.out.tiles
+        .map { _parentMeta, tileCsv -> tileCsv }
+        .splitCsv(header: true)
+        .map { row ->
+            def tileMeta = [
+                id: row.dataset_id,                       // e.g., "sample_01__tile_000001"
+                source_dataset_id: row.source_dataset_id, // e.g., "sample_01" (joins with preallocated skeleton)
+                resolution_level: row.resolution_level, 
+                x_min: row.x_min, x_max: row.x_max, 
+                y_min: row.y_min, y_max: row.y_max,
+                z_min: row.z_min, z_max: row.z_max
             ]
+            // We emit source_dataset_id ("sample_01") as index 0 to pair with the skeleton
+            tuple(row.source_dataset_id, tileMeta, row.input_uri)
         }
-        .filter { meta, slice_file -> 
-            meta.channel_idx == meta.target_channel
-        }
-    // 4. Run ilastik for each slice in parallel
-    ilastik_out = ILASTIK_SEGMENT(slice_ch, params.ilastik_project)
 
-    // 5. Re-group individual slices by sample name
-    grouped_masks_ch = ilastik_out.single_segs
-        .map { meta, seg_file ->
-            // Revert 'id' back to original image sample name
-            def parent_meta = [
-                id       : meta.sample,
-                sample   : meta.sample,
-                exp_name : meta.exp_name
-            ]
-            return [ parent_meta, seg_file ]
-        }
-        .groupTuple(by: 0)
+    // 5. Prepare the preallocated skeleton channel for the join step
+    ch_preallocated_ready = PREALLOCATE_OUTPUT_ZARR.out.empty_zarr
+        .map { meta, zarr_path -> tuple(meta.id, zarr_path) }
 
-    // 6. Hyperstack
-    HYPERSTACK(grouped_masks_ch)
+    // 6. Join the individual tiles with their parent's preallocated Zarr store
+    ch_joined_inputs = ch_image_tiles
+        .join(ch_preallocated_ready, by: 0)
+        .map { source_id, tileMeta, input_uri, preallocated_zarr_path ->
+            // Format to match: [ val(tileMeta), val(input_uri), val(preallocated_zarr_path) ]
+            tuple(tileMeta, input_uri, preallocated_zarr_path)
+        }
+
+    // 7. Run parallel pixel classification writing directly to the target Zarr
+    ILASTIK_SUBREGION_PIXEL_CLASS(ch_joined_inputs, ilastik_project)
 }
