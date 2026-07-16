@@ -4,7 +4,7 @@ process PYMIF_CONVERSION {
     container 'ghcr.io/grinic/pymif:2026.5.1'
 
     input:
-    tuple val(meta), path(row)
+    tuple val(meta), val(row)
 
     output:
     tuple val(meta), path("*.zarr"), emit: zarr
@@ -16,11 +16,11 @@ process PYMIF_CONVERSION {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def software = 'pymif'
 
     // write to csv so batch2zarr can process
     def headers = row.keySet().join(',')
-    def values  = row."""
+    def values  = row.values().join(',')
+    def csv_content = """
     ${headers}
     ${values}
     """.stripIndent().trim()
@@ -37,8 +37,17 @@ EOF
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        ${software}: \$(python -c 'import pymif; print(pymif.__version__)' 2>/dev/null || echo "unknown")
+        pymif: \$(python -c 'import pymif; print(pymif.__version__)' 2>/dev/null || echo "unknown")
     END_VERSIONS
     """
+    stub:
+    def prefix = task.ext.prefix ?: "${meta.id}"
+    """
+    mkdir -p "${prefix}.zarr"
 
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        pymif: "stub"
+    END_VERSIONS
+    """
 }
