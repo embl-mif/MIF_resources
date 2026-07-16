@@ -9,10 +9,10 @@ include { PYMIF_CONVERSION  } from '../../modules/local/pymif_conversion/main'
 workflow {
     sample_prep_ch = SAMPLE_INPUT_PREP(
         file(params.exp_dir, checkIfExists: true), 
-        params.manifest_name, 
+        params.sample_table,
         params.zarr_version
     )
-    pymif_inputs_ch = samples_prep_ch.csv
+    pymif_inputs_ch = sample_prep_ch.csv
         .splitCsv(header: true)
         .map { row ->
             def sample_id = file(row.input).simpleName
