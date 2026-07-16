@@ -1,8 +1,7 @@
 process SAMPLE_INPUT_PREP {
     tag "Prepare sample input for ${exp_dir}"
     label 'process_low'
-    // find container or make conda env
-    container 
+    conda "${moduleDir}/environment.yml"
 
     input:
     path exp_dir
@@ -18,7 +17,7 @@ process SAMPLE_INPUT_PREP {
     script:
     def args = task.ext.args ?: ''
     """
-    generate_sample_input.py \
+    generate_sample_table.py \
         --exp ${exp_dir} \
         --zarr-version ${zarr_ver} \
         --out ${sample_table} \
