@@ -21,7 +21,7 @@ def get_microscope_name(ome_tif_path):
     except Exception: return "unknown"
     return "unknown" args.zarr_version,
 
-def generate_sample_input(exp_folder, output_csv):
+def generate_sample_input(exp_folder, zarr_version, output_csv):
     # Construct the full path to the data directory
     
     if not os.path.exists(exp_folder):

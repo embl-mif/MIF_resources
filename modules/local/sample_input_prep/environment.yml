@@ -1,0 +1,8 @@
+name: sample_input_prep
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - pandas
+  - tifffile
