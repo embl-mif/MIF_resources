@@ -7,10 +7,17 @@ include { PYMIF_CONVERSION  } from '../../modules/local/pymif_conversion/main'
 
 
 workflow {
-    samples_to_convert = SAMPLE_INPUT_PREP(
-        file(params.exp_dir), 
+    sample_prep_ch = SAMPLE_INPUT_PREP(
+        file(params.exp_dir, checkIfExists: true), 
         params.manifest_name, 
         params.zarr_version
     )
-    PYMIF_CONVERSION(samples_to_convert)
+    pymif_inputs_ch = samples_prep_ch.csv
+        .splitCsv(header: true)
+        .map { row ->
+            def sample_id = file(row.input).simpleName
+            def meta = [ id: sample_id, exp_name: file(params.exp_dir).name ]
+            return [ meta, row ]
+        }
+    PYMIF_CONVERSION(pymif_inputs_ch)
 }
