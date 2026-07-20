@@ -24,7 +24,7 @@ process PREALLOCATE_OUTPUT_ZARR {
     # Preallocate the skeleton locally in the temporary work directory
     preallocate_zarr.py \\
         --input "${image}" \\
-        --output "${meta.id}_probabilities.ome.zarr" \\
+        --output "${pubdir}/${meta.id}_probabilities.ome.zarr" \\
         ${args}
 
     # Publish/copy the directory via bash
