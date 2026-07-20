@@ -27,8 +27,6 @@ process PREALLOCATE_OUTPUT_ZARR {
         --output "${pubdir}/${meta.id}_probabilities.ome.zarr" \\
         ${args}
 
-    # Publish/copy the directory via bash
-    cp -r "${meta.id}_probabilities.ome.zarr" "${pubdir}/"
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
