@@ -19,7 +19,7 @@ def get_microscope_name(ome_tif_path):
                 microscope = instr.find('./{http://www.openmicroscopy.org/Schemas/OME/2016-06}Microscope')
                 if microscope is not None: return microscope.get('Model', 'unknown_model')
     except Exception: return "unknown"
-    return "unknown" args.zarr_version,
+    return "unknown"
 
 def generate_sample_input(exp_folder, zarr_version, output_csv):
     # Construct the full path to the data directory
