@@ -9,8 +9,8 @@ include { PYMIF_CONVERSION  } from '../../modules/local/pymif_conversion/main'
 workflow {
     sample_prep_ch = SAMPLE_INPUT_PREP(
         file(params.exp_dir, checkIfExists: true), 
-        params.sample_table,
-        params.zarr_version
+        params.zarr_version,
+        params.sample_table
     )
     pymif_inputs_ch = sample_prep_ch.csv
         .splitCsv(header: true)
