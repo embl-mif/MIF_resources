@@ -1,53 +1,54 @@
 process ILASTIK_SUBREGION_PIXEL_CLASS {
-    tag "${meta.id}"
+    tag "${meta.id}_z${meta.z_min}_y${meta.y_min}"
     label 'process_medium'
 
     container "docker.io/biocontainers/ilastik:1.4.2_cv1"
 
     input:
-    tuple val(meta), val(image), val(output_zarr)
+    tuple val(meta), val(input_zarr), val(master_output_zarr)
     path  project
 
     output:
-    tuple val(meta), val(output_zarr), emit: segmentation
-    path "versions.yml"           , emit: versions
+    tuple val(meta), val(master_output_zarr), emit: zarr
+    path "versions.yml"                      , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     script:
-    def args      = task.ext.args ?: ''
-    def prefix    = task.ext.prefix ?: "${meta.id}_segmented"
-    def memory_mb = task.memory ? task.memory.toMega() : 4000
+    def args    = task.ext.args ?: ''
+    def prefix  = task.ext.prefix ?: "${meta.id}"
 
-    def subregion = ""
-    def axes = "yxc"
-    if (meta.y_min != null && meta.y_min != "") {
-        if (meta.z_min != null && meta.z_min != "") {
-            axes = "zyxc"
-            subregion = "--cutout_subregion=\"[(${meta.z_min},${meta.y_min},${meta.x_min},0),(${meta.z_max},${meta.y_max},${meta.x_max},100)]\""
-        } else {
-            subregion = "--cutout_subregion=\"[(${meta.y_min},${meta.x_min},0),(${meta.y_max},${meta.x_max},100)]\""
-        }
-    }
+    // Handle optional Z flags dynamically for 2D vs 3D data
+    def z_min_arg = meta.z_min != null ? "--z-min ${meta.z_min}" : ""
+    def z_max_arg = meta.z_max != null ? "--z-max ${meta.z_max}" : ""
+    def halo_arg  = meta.halo  != null ? "--halo ${meta.halo}"   : ""
 
     """
-    export LAZYFLOW_THREADS=${task.cpus}
-    export LAZYFLOW_TOTAL_RAM_MB=${memory_mb}
-    export HOME=\$PWD
-
-    run_ilastik.sh \\
-        --headless \\
-        --project=${project} \\
-        --input_axes=${axes} \\
-        --output_format="zarr" \\
-        --output_filename_format="${output_zarr}" \\
-        --output_internal_path="0" \\
-        --export_source="probabilities" \\
-        ${subregion} \\
-        ${args} \\
-        "${image}"
+    ilastik_subregion_pixel_class.py \
+        --input-zarr "${input_zarr}" \
+        --output-zarr "${master_output_zarr}" \
+        --project "${project}" \
+        --y-min ${meta.y_min} \
+        --y-max ${meta.y_max} \
+        --x-min ${meta.x_min} \
+        --x-max ${meta.x_max} \
+        ${z_min_arg} \
+        ${z_max_arg} \
+        ${halo_arg} \
+        ${args}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        ilastik: \$(run_ilastik.sh --headless --version 2>&1 | head -n 1 | sed 's/ilastik //')
+        ilastik: \$(python -c "import ilastik; print(getattr(ilastik, '__version__', '1.4.2'))")
+    END_VERSIONS
+    """
+
+    stub:
+    """
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        ilastik: 1.4.2
     END_VERSIONS
     """
 }
