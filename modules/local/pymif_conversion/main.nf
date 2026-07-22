@@ -4,7 +4,7 @@ process PYMIF_CONVERSION {
     container 'ghcr.io/grinic/pymif:2026.5.1'
 
     input:
-    tuple val(meta), val(row)
+    tuple val(meta), val(row), path(ome_tiff)
 
     output:
     tuple val(meta), path("*.zarr"), emit: zarr
@@ -16,10 +16,13 @@ process PYMIF_CONVERSION {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
+    // to prevent data duplication, 
+    def local_row = new LinkedHashMap(row)
+    local_row['input'] = ome_tiff.name
 
     // write to csv so batch2zarr can process
-    def headers = row.keySet().join(',')
-    def values  = row.values().join(',')
+    def headers = local_row.keySet().join(',')
+    def values  = local_row.values().join(',')
     def csv_content = """
     ${headers}
     ${values}
@@ -32,7 +35,6 @@ EOF
 
     pymif batch2zarr \
         -i input.csv \
-        -o ${prefix}.zarr \
         ${args}
 
     cat <<-END_VERSIONS > versions.yml
