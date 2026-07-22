@@ -8,18 +8,60 @@ import pandas as pd
 import tifffile
 import xml.etree.ElementTree as ET
 
-def get_microscope_name(ome_tif_path):
+def get_ome_metadata(ome_tif_path):
+    """Extracts microscope model, channel names, and multiscale levels from an OME-TIFF."""
+    meta = {
+        "microscope": "unknown",
+        "channel_names": "",
+        "num_levels": ""
+    }
+    
     try:
         with tifffile.TiffFile(ome_tif_path) as tif:
+            # 1. Extract pyramid levels directly from the TIFF hierarchy
+            if tif.series:
+                # series[0].levels contains the base image + all downsampled sub-resolutions
+                meta["num_levels"] = str(len(tif.series[0].levels))
+            
+            # 2. Parse the OME-XML string
             ome_xml = tif.ome_metadata
-            if not ome_xml: return "unknown"
+            if not ome_xml: 
+                return meta
+                
             root = ET.fromstring(ome_xml)
-            instruments = root.findall('.//{http://www.openmicroscopy.org/Schemas/OME/2016-06}Instrument')
-            for instr in instruments:
-                microscope = instr.find('./{http://www.openmicroscopy.org/Schemas/OME/2016-06}Microscope')
-                if microscope is not None: return microscope.get('Model', 'unknown_model')
-    except Exception: return "unknown"
-    return "unknown"
+            
+            # 3. Extract and map the Microscope model
+            # Using {*} wildcard to avoid strict OME namespace version dependencies
+            microscope = root.find('.//{*}Microscope')
+            if microscope is not None:
+                model = microscope.get('Model', '').lower()
+                # Force mapping to 'opera' for Phenix systems to satisfy pymif
+                if 'phenix' in model or 'opera' in model:
+                    meta["microscope"] = "opera"
+                else:
+                    meta["microscope"] = model
+
+            # 4. Extract Channel Names
+            # Look at the first image's pixels to find the channels
+            first_pixels = root.find('.//{*}Pixels')
+            if first_pixels is not None:
+                channels = first_pixels.findall('./{*}Channel')
+                ch_names = []
+                for ch in channels:
+                    name = ch.get('Name')
+                    if name:
+                        ch_names.append(name)
+                    else:
+                        # Fallback if 'Name' is missing
+                        ch_names.append(ch.get('ID', 'unknown'))
+                
+                # Join with commas (e.g., "DAPI,Alexa 488,Hoechst")
+                meta["channel_names"] = ",".join(ch_names)
+
+    except Exception as e:
+        print(f"Warning: Failed to parse metadata for {ome_tif_path}: {e}")
+        
+    return meta
 
 def generate_sample_input(exp_folder, zarr_version, output_csv):
     # Construct the full path to the data directory
@@ -45,7 +87,6 @@ def generate_sample_input(exp_folder, zarr_version, output_csv):
         all_files = glob.glob(f"{exp_folder}/*.ome.tiff") + glob.glob(f"{exp_folder}/*.ome.tif")
         samples_to_process = [os.path.basename(f).split('.ome')[0] for f in all_files]
 
-    detected_microscope = None
     processed_count = 0
 
     with open(output_csv, 'w', newline='') as f:
@@ -58,12 +99,12 @@ def generate_sample_input(exp_folder, zarr_version, output_csv):
             if not ome_files: continue
             
             ome_file = ome_files[0]
-            if detected_microscope is None:
-                detected_microscope = get_microscope_name(ome_file)
+            # Extract metadata for this specific file
+            file_meta = get_ome_metadata(ome_file)
             
             writer.writerow([
-                ome_file, detected_microscope, f"{sample}.zarr", "1 1 1 512 512",
-                "100", "0", args.zarr_version, "2", "", "", ""
+                ome_file, file_meta["microscope"], f"{sample}.zarr", "1 1 1 512 512",
+                "100", "0", args.zarr_version, "2", "", file_meta["channel_names"], file_meta["num_levels"]
             ])
             processed_count += 1
 
