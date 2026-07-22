@@ -15,9 +15,10 @@ workflow {
     pymif_inputs_ch = sample_prep_ch.csv
         .splitCsv(header: true)
         .map { row ->
+            def ome_tiff = file(row.input)
             def sample_id = file(row.input).simpleName
             def meta = [ id: sample_id, exp_name: file(params.exp_dir).name ]
-            return [ meta, row ]
+            return [ meta, row , ome_tiff]
         }
     PYMIF_CONVERSION(pymif_inputs_ch)
 }
