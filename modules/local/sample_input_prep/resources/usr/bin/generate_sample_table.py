@@ -98,7 +98,7 @@ def generate_sample_input(exp_folder, zarr_version, output_csv):
             ome_files = glob.glob(f"{exp_folder}/{sample}*.ome.tiff") + glob.glob(f"{exp_folder}/{sample}*.ome.tif")
             if not ome_files: continue
             
-            ome_file = ome_files[0]
+            ome_file = os.path.abspath(ome_files[0])
             # Extract metadata for this specific file
             file_meta = get_ome_metadata(ome_file)
             
