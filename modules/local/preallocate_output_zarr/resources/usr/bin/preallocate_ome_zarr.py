@@ -2,35 +2,55 @@
 import argparse
 import os
 import shutil
+import h5py
 import zarr
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Preallocate an empty OME-Zarr skeleton for parallel writes."
+        description="Preallocate an empty OME-Zarr skeleton for parallel writes. Use Ilastik .ilp project metadata"
     )
     parser.add_argument(
         "--input", required=True, help="Path to the input OME-Zarr directory"
+    )
+    parser.add_argument(
+        "--ilp", required=True, help="Path to the Ilastik .ilp project file"
     )
     parser.add_argument(
         "--output",
         required=True,
         help="Path where the preallocated OME-Zarr will be created",
     )
-    parser.add_argument(
-        "--num-channels",
-        type=int,
-        default=2,
-        help="Number of probability channels to allocate",
-    )
     return parser.parse_args()
 
+def extract_ilp_labels(ilp_path):
+    """Extract label names and count directly from the Ilastik project file. Label # determines channel #"""
+    if not os.path.exists(ilp_path):
+        raise FileNotFoundError(f"Ilastik project file not found: {ilp_path}")
 
-def preallocate_zarr(input_path, output_path, num_channels):
-    # 1. Open the source Zarr group
+    with h5py.File(ilp_path, "r") as f:
+        if "PixelClassification/LabelNames" not in f:
+            raise KeyError(
+                "Could not find '/PixelClassification/LabelNames' in the .ilp file."
+            )
+        
+        raw_labels = f["PixelClassification/LabelNames"][()]
+        labels = [
+            l.decode("utf-8") if isinstance(l, bytes) else str(l)
+            for l in raw_labels
+        ]
+        return label
+
+def preallocate_zarr(input_path, ilp_path, output_path):
+    # Read class metadata from Ilastik .ilp file
+    labels = extract_ilp_labels(ilp_path)
+    num_channels = len(labels)
+    print(f"Detected {num_channels} classes from .ilp: {labels}")
+
+    # Open the source Zarr group
     src_group = zarr.open(input_path, mode="r")
 
-    # 2. Create the destination Zarr directory
+    # Create the destination Zarr directory
     if os.path.exists(output_path):
         print(f"Warning: Output path '{output_path}' already exists. Overwriting...")
         shutil.rmtree(output_path)
@@ -39,7 +59,7 @@ def preallocate_zarr(input_path, output_path, num_channels):
     store = zarr.DirectoryStore(output_path)
     dest_group = zarr.group(store=store, overwrite=True)
 
-    # 3. Read and modify OME-NGFF metadata (.zattrs)
+    # Read and modify OME-NGFF metadata (.zattrs)
     zattrs = dict(src_group.attrs)
     multiscales = zattrs.get("multiscales", [])
     if not multiscales:
@@ -64,7 +84,7 @@ def preallocate_zarr(input_path, output_path, num_channels):
         palette = ["FF0000", "00FF00", "0000FF", "FFFF00", "FF00FF", "00FFFF", "FFFFFF"]
         new_omero_channels = []
         
-        for i in range(num_channels):
+        for i, label_name in enumerate(labels):
             color = palette[i % len(palette)]
             new_omero_channels.append(
                 {
@@ -81,7 +101,7 @@ def preallocate_zarr(input_path, output_path, num_channels):
 
     dest_group.attrs.update(zattrs)
 
-    # 4. Create each empty multiscale pyramid level array
+    # Create each empty multiscale pyramid level array
     for dataset_meta in multiscales[0]["datasets"]:
         path_name = dataset_meta["path"]
         src_array = src_group[path_name]
@@ -100,7 +120,7 @@ def preallocate_zarr(input_path, output_path, num_channels):
         new_shape[channel_axis_index] = num_channels
 
         new_chunks = list(orig_chunks)
-        new_chunks[channel_axis_index] = min(orig_chunks[channel_axis_index], num_channels)
+        new_chunks[channel_axis_index] = 1
 
         print(f"Preallocating scale '{path_name}': {orig_shape} -> {new_shape}")
 
@@ -121,6 +141,6 @@ if __name__ == "__main__":
     args = parse_args()
     preallocate_zarr(
         input_path=args.input,
-        output_path=args.output,
-        num_channels=args.num_channels,
+        ilp_path=args.ilp,
+        output_path=args.output
     )
