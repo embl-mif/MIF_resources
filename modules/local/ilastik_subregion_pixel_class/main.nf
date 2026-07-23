@@ -19,10 +19,12 @@ process ILASTIK_SUBREGION_PIXEL_CLASS {
     def args    = task.ext.args ?: ''
     def prefix  = task.ext.prefix ?: "${meta.id}"
 
-    // Handle optional Z flags dynamically for 2D vs 3D data
-    def z_min_arg = meta.z_min != null ? "--z-min ${meta.z_min}" : ""
-    def z_max_arg = meta.z_max != null ? "--z-max ${meta.z_max}" : ""
-    def halo_arg  = meta.halo  != null ? "--halo ${meta.halo}"   : ""
+    // Dynamically handle time, 2D slice indices, 3D bounds, and halo from meta map
+    def t_arg     = meta.t_index != null ? "--t-index ${meta.t_index}" : (meta.t != null ? "--t-index ${meta.t}" : "")
+    def z_idx_arg = meta.z_index != null ? "--z-index ${meta.z_index}" : (meta.z != null ? "--z-index ${meta.z}" : "")
+    def z_min_arg = meta.z_min   != null ? "--z-min ${meta.z_min}"     : ""
+    def z_max_arg = meta.z_max   != null ? "--z-max ${meta.z_max}"     : ""
+    def halo_arg  = meta.halo    != null ? "--halo ${meta.halo}"       : ""
 
     """
     ilastik_subregion_pixel_class.py \
@@ -33,6 +35,8 @@ process ILASTIK_SUBREGION_PIXEL_CLASS {
         --y-max ${meta.y_max} \
         --x-min ${meta.x_min} \
         --x-max ${meta.x_max} \
+        ${t_arg} \
+        ${z_idx_arg} \
         ${z_min_arg} \
         ${z_max_arg} \
         ${halo_arg} \
@@ -41,6 +45,8 @@ process ILASTIK_SUBREGION_PIXEL_CLASS {
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         ilastik: \$(python -c "import ilastik; print(getattr(ilastik, '__version__', '1.4.2'))")
+        zarr: \$(python -c "import zarr; print(zarr.__version__)")
+        h5py: \$(python -c "import h5py; print(h5py.__version__)")
     END_VERSIONS
     """
 
