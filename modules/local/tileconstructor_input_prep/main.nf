@@ -1,4 +1,4 @@
-process GENERATE_TILE_CONFIG {
+process TILECONSTRUCTOR_INPUT_PREP {
     tag "generating input for tileconstructor"
     label 'process_low'
     conda "${moduleDir}/environment.yml"
