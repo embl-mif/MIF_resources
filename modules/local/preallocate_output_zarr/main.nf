@@ -2,8 +2,7 @@ process PREALLOCATE_OUTPUT_ZARR {
     tag "$meta.id"
     label 'process_low'
 
-    // find container
-    container 
+    conda "${moduleDir}/environment.yml"
 
     input:
     tuple val(meta), val(image)
