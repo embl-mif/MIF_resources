@@ -7,6 +7,7 @@ process PREALLOCATE_OUTPUT_ZARR {
 
     input:
     tuple val(meta), val(image)
+    path ilp_project
     val pubdir
 
     output:
@@ -15,7 +16,7 @@ process PREALLOCATE_OUTPUT_ZARR {
     path "versions.yml"                   , emit: versions
 
     script:
-    def args = task.ext.args ?: '--num-channels 2'
+    def args = task.ext.args ?: ''
 
     """
     # Create the publication directory on the shared system
@@ -24,6 +25,7 @@ process PREALLOCATE_OUTPUT_ZARR {
     # Preallocate the skeleton locally in the temporary work directory
     preallocate_zarr.py \\
         --input "${image}" \\
+        --ilp "${ilp_project}" \\
         --output "${pubdir}/${meta.id}_probabilities.ome.zarr" \\
         ${args}
 
@@ -32,6 +34,7 @@ process PREALLOCATE_OUTPUT_ZARR {
     "${task.process}":
         python: \$(python --version 2>&1 | sed 's/Python //g')
         zarr: \$(python -c "import zarr; print(zarr.__version__)")
+        h5py: \$(python -c "import h5py; print(h5py.__version__)")
     END_VERSIONS
     """
 }
