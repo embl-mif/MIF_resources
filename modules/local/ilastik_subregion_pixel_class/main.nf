@@ -21,7 +21,10 @@ process ILASTIK_SUBREGION_PIXEL_CLASS {
 
     // Dynamically handle time, 2D slice indices, 3D bounds, and halo from meta map
     def t_arg     = meta.t_index != null ? "--t-index ${meta.t_index}" : (meta.t != null ? "--t-index ${meta.t}" : "")
-    def z_idx_arg = meta.z_index != null ? "--z-index ${meta.z_index}" : (meta.z != null ? "--z-index ${meta.z}" : "")
+    def y_min_arg = meta.y_min   != null ? "--y-min ${meta.y_min}"     : ""
+    def y_max_arg = meta.y_max   != null ? "--y-max ${meta.y_max}"     : ""
+    def x_min_arg = meta.x_min   != null ? "--x-min ${meta.x_min}"     : ""
+    def x_max_arg = meta.x_max   != null ? "--x-max ${meta.x_max}"     : ""
     def z_min_arg = meta.z_min   != null ? "--z-min ${meta.z_min}"     : ""
     def z_max_arg = meta.z_max   != null ? "--z-max ${meta.z_max}"     : ""
     def halo_arg  = meta.halo    != null ? "--halo ${meta.halo}"       : ""
@@ -31,12 +34,11 @@ process ILASTIK_SUBREGION_PIXEL_CLASS {
         --input-zarr "${input_zarr}" \
         --output-zarr "${master_output_zarr}" \
         --project "${project}" \
-        --y-min ${meta.y_min} \
-        --y-max ${meta.y_max} \
-        --x-min ${meta.x_min} \
-        --x-max ${meta.x_max} \
+        ${y_min_arg} \
+        ${y_max_arg} \
+        ${x_min_arg} \
+        ${x_max_arg} \
         ${t_arg} \
-        ${z_idx_arg} \
         ${z_min_arg} \
         ${z_max_arg} \
         ${halo_arg} \
