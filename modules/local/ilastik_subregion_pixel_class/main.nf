@@ -29,8 +29,9 @@ process ILASTIK_SUBREGION_PIXEL_CLASS {
     def z_max_arg = meta.z_max   != null ? "--z-max ${meta.z_max}"     : ""
     def halo_arg  = meta.halo    != null ? "--halo ${meta.halo}"       : ""
 
+    def ilastik_python = "/opt/ilastik-1.4.2-Linux/bin/python3"
     """
-    ilastik_subregion_pixel_class.py \
+    ${ilastik_python} ${moduleDir}/resources/usr/bin/ilastik_tile.py \
         --input-zarr "${input_zarr}" \
         --output-zarr "${master_output_zarr}" \
         --project "${project}" \
