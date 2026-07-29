@@ -21,7 +21,7 @@ workflow {
 
             def meta = [
                 id: input_dataset.simpleName,
-                exp_name: row.exp_name ?: 'pymif2zarr'
+                sample_name: row.sample_name ?: input_dataset.simpleName
             ]
 
             def row2 = row + [

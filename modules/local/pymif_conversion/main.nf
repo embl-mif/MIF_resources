@@ -3,9 +3,6 @@ process PYMIF_CONVERSION {
     label 'process_medium'
     container 'ghcr.io/grinic/pymif:2026.7.2'
 
-    // publish into the absolute parent directory from CSV
-    publishDir { row.output_dir }, mode: 'copy'
-
     input:
     tuple val(meta), val(row), path(input_dataset)
 
