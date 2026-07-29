@@ -13,12 +13,23 @@ workflow {
         .splitCsv(header: true)
         .map { row ->
             def input_dataset = file(row.input, checkIfExists: true)
+
+            def output_path = new File(row.output?.toString() ?: '')
+            if( !output_path.isAbsolute() ) {
+                error "CSV column 'output' must be an absolute path, got: ${row.output}"
+            }
+
             def meta = [
                 id: input_dataset.simpleName,
                 exp_name: row.exp_name ?: 'pymif2zarr'
             ]
 
-            return [meta, row, input_dataset]
+            def row2 = row + [
+                output_name: output_path.name,
+                output_dir : output_path.parent
+            ]
+
+            return [meta, row2, input_dataset]
         }
 
     PYMIF_CONVERSION(pymif_inputs_ch)

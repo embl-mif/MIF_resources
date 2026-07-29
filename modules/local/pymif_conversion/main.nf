@@ -3,6 +3,9 @@ process PYMIF_CONVERSION {
     label 'process_medium'
     container 'ghcr.io/grinic/pymif:2026.7.2'
 
+    // publish into the absolute parent directory from CSV
+    publishDir { row.output_dir }, mode: 'copy'
+
     input:
     tuple val(meta), val(row), path(input_dataset)
 
@@ -36,7 +39,7 @@ process PYMIF_CONVERSION {
     def commandParts = [
         'pymif', '2zarr',
         '--input_path', shellQuote(row.input),
-        '--zarr_path', shellQuote(row.output)
+        '--zarr_path', shellQuote(row.output_name)
     ]
 
     if (isPresent(row.microscope)) {
