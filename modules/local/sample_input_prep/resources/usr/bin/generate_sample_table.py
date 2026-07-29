@@ -71,7 +71,7 @@ def generate_sample_input(exp_folder, zarr_version, output_csv):
 
     headers = ["input", "microscope", "output", "chunk_size", "max_size(MB)", 
                "scene_index", "zarr_format", "downscale_factor", "channel_colors", 
-               "channel_names", "num_levels"]
+               "channel_names", "num_levels", "subset"]
 
     meta_paths = glob.glob(f"{exp_folder}/*metadata.csv")
     samples_to_process = []
@@ -103,7 +103,7 @@ def generate_sample_input(exp_folder, zarr_version, output_csv):
             file_meta = get_ome_metadata(ome_file)
             
             writer.writerow([
-                ome_file, file_meta["microscope"], f"{sample}.zarr", "1 1 1 512 512",
+                ome_file, file_meta["microscope"], f"{sample}.ome.zarr", "1 1 1 512 512",
                 "100", "0", args.zarr_version, "2", "", file_meta["channel_names"], file_meta["num_levels"]
             ])
             processed_count += 1

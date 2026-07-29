@@ -18,10 +18,12 @@ input:
       description: |
         Groovy Map containing sample information.
         e.g. [ id:'sample1' ]
-  - input_csv:
+  - row:
+      type: map
+      description: "One parsed row from the PyMIF input CSV."
+  - input_dataset:
       type: file
-      description: "PyMIF batch CSV describing one or more microscope datasets to convert."
-      pattern: "*.csv"
+      description: "Input microscopy dataset referenced by row.input."
 output:
   - meta:
       type: map

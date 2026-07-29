@@ -1,0 +1,25 @@
+#!/usr/bin/env nextflow
+
+nextflow.enable.dsl=2
+
+include { PYMIF_CONVERSION } from '../../modules/local/pymif_conversion/main'
+
+
+workflow {
+    input_csv_ch = Channel
+        .fromPath(params.input_csv, checkIfExists: true)
+
+    pymif_inputs_ch = input_csv_ch
+        .splitCsv(header: true)
+        .map { row ->
+            def input_dataset = file(row.input, checkIfExists: true)
+            def meta = [
+                id: input_dataset.simpleName,
+                exp_name: row.exp_name ?: 'pymif2zarr'
+            ]
+
+            return [meta, row, input_dataset]
+        }
+
+    PYMIF_CONVERSION(pymif_inputs_ch)
+}
