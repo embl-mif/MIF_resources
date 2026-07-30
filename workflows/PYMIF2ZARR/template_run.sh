@@ -12,14 +12,12 @@
 # Load nextflow
 module load Nextflow/25.10.1
 
-# Navigate to repo
-cd /home/$USER/projects # <----------------MODIFY TO YOUR LOCAL REPO PATH
-
 #Using 'export' ensures these are visible to Nextflow sub-processes
+export NF_PATH="/home/$USER/projects/mif-resources/workflows/PYMIF2ZARR/main.nf" # <----------------MODIFY TO YOUR LOCAL REPO PATH
 export CSV_PATH="/PATH/TO/batch.csv"           # <----------------MODIFY
 
 # Run Nextflow
-nextflow run mif_resources/workflows/PYMIF2ZARR/main.nf \
+nextflow run "$NF_PATH" \
     --input_csv  "$CSV_PATH" \
     -resume
 
