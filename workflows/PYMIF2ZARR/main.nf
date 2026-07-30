@@ -14,21 +14,19 @@ workflow {
         .map { row ->
             def input_dataset = file(row.input, checkIfExists: true)
 
-            def output_path = new File(row.output?.toString() ?: '')
-            if( !output_path.isAbsolute() ) {
+            def output_dataset = file(row.output, checkIfExists: false)
+            if( !output_dataset.isAbsolute() ) {
                 error "CSV column 'output' must be an absolute path, got: ${row.output}"
             }
 
             def meta = [
                 id: input_dataset.simpleName,
-                sample_name: row.sample_name ?: input_dataset.simpleName
+                outdir: output_dataset.parent ?: input_dataset.parent
             ]
 
             def row2 = row + [
-                output_name: output_path.name,
-                output_dir : output_path.parent
+                output_name: output_dataset.name,
             ]
-
             return [meta, row2, input_dataset]
         }
 

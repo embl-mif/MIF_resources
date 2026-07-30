@@ -56,13 +56,11 @@ precedence.
 
 ## Running the workflow
 
-From the repository root:
+From any location:
 
 ```bash
-nextflow run workflows/PYMIF2ZARR/main.nf \
-    -c workflows/PYMIF2ZARR/nextflow.config \
+nextflow run /path/to/workflows/PYMIF2ZARR/main.nf \
     --input_csv /path/to/input.csv \
-    --outdir results
 ```
 
 The CSV is split into a channel containing one element per row. Each element
