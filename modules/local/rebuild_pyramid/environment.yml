@@ -1,0 +1,10 @@
+name: rebuild_pyramid
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - zarr
+  - pip
+  - pip:
+      - "git+https://github.com/nvivanco/squirrel.git@generalize-pyramid"
