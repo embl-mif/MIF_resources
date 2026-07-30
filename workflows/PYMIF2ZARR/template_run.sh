@@ -20,6 +20,6 @@ export CSV_PATH="/PATH/TO/batch.csv"           # <----------------MODIFY
 
 # Run Nextflow
 nextflow run mif_resources/workflows/PYMIF2ZARR/main.nf \ # <----------------MODIFY IF REPO IS CLONED IN DIFFERENT LOCATION
-    -i "$CSV_PATH" \
+    --input_csv  "$CSV_PATH" \
     -resume
 
