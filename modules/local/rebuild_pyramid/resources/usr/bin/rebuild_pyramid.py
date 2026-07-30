@@ -15,7 +15,6 @@ def main():
                          help="Downsampling method. Use 'Average' for continuous data like probabilities, "
                               "'Sample' for label/instance images.")
     parser.add_argument("--n-threads", type=int, default=1, help="Thread count for pyramid rebuild.")
-    parser.add_argument("--done-file", type=str, default=None, help="Output JSON path upon completion.")
 
     args = parser.parse_args()
 
@@ -33,18 +32,6 @@ def main():
     oz.rebuild_pyramid(n_threads=args.n_threads)
 
     print("[PyramidRebuild] Pyramid rebuild complete.")
-
-    if args.done_file:
-        done_path = Path(args.done_file)
-        done_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(done_path, "w") as f:
-            json.dump({
-                "status": "COMPLETED",
-                "output_zarr": args.output_zarr,
-                "levels_rebuilt": oz.metadata.levels[1:],
-                "downsample_method": oz.metadata.downsample_method,
-            }, f, indent=2)
-
 
 if __name__ == "__main__":
     main()
