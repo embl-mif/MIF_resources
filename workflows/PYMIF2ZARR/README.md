@@ -58,7 +58,10 @@ precedence.
 
 From any location:
 
+
 ```bash
+module load Nextflow/25.10.1
+
 nextflow run /path/to/workflows/PYMIF2ZARR/main.nf \
     --input_csv /path/to/input.csv \
 ```
