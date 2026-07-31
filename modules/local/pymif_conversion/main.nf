@@ -1,7 +1,7 @@
 process PYMIF_CONVERSION {
     tag "${meta.id}"
     label 'process_medium'
-    container 'ghcr.io/grinic/pymif:2026.7.2'
+    container 'ghcr.io/grinic/pymif:2026.7.4'
 
     input:
     tuple val(meta), val(row), path(input_dataset)
