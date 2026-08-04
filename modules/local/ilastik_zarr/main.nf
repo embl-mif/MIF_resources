@@ -40,7 +40,8 @@ process ILASTIK_ZARR {
         ${y_max_arg} \
         ${x_min_arg} \
         ${x_max_arg} \
-        ${t_arg} \
+        ${t_min_arg} \
+        ${t_max_arg} \
         ${z_min_arg} \
         ${z_max_arg} \
         ${halo_arg} \
