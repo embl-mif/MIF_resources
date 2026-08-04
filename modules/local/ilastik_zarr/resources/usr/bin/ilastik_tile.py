@@ -122,14 +122,9 @@ def process_single_tile(tile_spec, in_store, out_store, shell, args, is_2d_model
     y_max = _pick("y_max", args.y_max, shape_y)
     x_min = _pick("x_min", args.x_min, 0)
     x_max = _pick("x_max", args.x_max, shape_x)
-
-    # FIX: previously a 2D project silently collapsed the z range to a single
-    # slice (z_max = z_min + 1), so a tile covering z=[0, 64) wrote one slice
-    # and reported success. A 2D project computes features slice-wise, which
-    # only means it needs no halo in z -- the z range itself is still written.
     z_min = _pick("z_min", args.z_min, 0)
     z_max = _pick("z_max", args.z_max, shape_z)
-    t_index = _pick("t_index", args.t_index, 0)
+    t_index = int(tile_spec["t_index"])
 
     if not (0 <= z_min < z_max <= shape_z):
         raise ValueError(f"Bad z range [{z_min}, {z_max}) for extent {shape_z}.")
