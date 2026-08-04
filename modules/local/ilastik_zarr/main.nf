@@ -1,4 +1,4 @@
-process ILASTIK_SUBREGION_PIXEL_CLASS {
+process ILASTIK_ZARR {
     tag "${meta.id}_z${meta.z_min}_y${meta.y_min}"
     label 'process_medium'
 
@@ -20,7 +20,8 @@ process ILASTIK_SUBREGION_PIXEL_CLASS {
     def prefix  = task.ext.prefix ?: "${meta.id}"
 
     // Dynamically handle time, 2D slice indices, 3D bounds, and halo from meta map
-    def t_arg     = meta.t_index != null ? "--t-index ${meta.t_index}" : (meta.t != null ? "--t-index ${meta.t}" : "")
+    def t_min_arg = meta.t_min != null ? "--t-min ${meta.t_min}" : ""
+    def t_max_arg = meta.t_max != null ? "--t-max ${meta.t_max}" : ""
     def y_min_arg = meta.y_min   != null ? "--y-min ${meta.y_min}"     : ""
     def y_max_arg = meta.y_max   != null ? "--y-max ${meta.y_max}"     : ""
     def x_min_arg = meta.x_min   != null ? "--x-min ${meta.x_min}"     : ""
