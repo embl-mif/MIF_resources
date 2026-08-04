@@ -418,8 +418,7 @@ def main():
     if not (0 <= t_start < t_end <= shape_t):
         raise ValueError(f"Bad t range [{t_start}, {t_end}) for extent {shape_t}.")
 
-        tiles = [
-            {
+    tiles = [{
             "y_min": args.y_min, "y_max": args.y_max,
             "x_min": args.x_min, "x_max": args.x_max,
             "z_min": args.z_min, "z_max": args.z_max,
