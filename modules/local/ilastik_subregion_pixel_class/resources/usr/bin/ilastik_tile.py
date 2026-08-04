@@ -316,15 +316,7 @@ def _build_skeleton(input_path: str, ilp_path: str, output_path: str, dtype: str
 def ensure_preallocated(input_path: str, ilp_path: str, output_path: str,
                         lock_path: str, dtype: str = "float32"):
     """
-    Double-checked locking, but keyed on a marker written AFTER the store is
-    complete.
-
-    FIX: the previous version used the store's own .zgroup as the marker.
-    zarr writes .zgroup first and the pyramid arrays afterwards, so a worker
-    arriving mid-preallocation took the fast path and opened a store whose
-    arrays did not exist yet. Worse, a crashed preallocation left .zgroup on
-    disk forever and every later job skipped creation and failed. A separate
-    marker written last means an interrupted build is simply redone.
+    Not sure I want to keep preallocation within the module. Feels unecessarily complicated to have to do this.
     """
     marker_file = f"{output_path}.complete"
 
