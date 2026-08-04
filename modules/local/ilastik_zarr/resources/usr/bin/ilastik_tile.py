@@ -360,15 +360,10 @@ def main():
     parser.add_argument("--input-zarr", required=True, help="Path to input raw Zarr store")
     parser.add_argument("--output-zarr", required=True, help="Path to output probability Zarr store")
     parser.add_argument("--project", required=True, help="Path to Ilastik project file (.ilp)")
-
-    # FIX: main() branched on args.tiles_json but the option was never defined,
-    # so every invocation died with AttributeError before doing any work.
-    parser.add_argument("--tiles-json", type=str, default=None,
-                        help="JSON file holding a list of tile dicts (y_min, y_max, x_min, x_max, "
-                             "z_min, z_max, t_index). Omit to process a single tile from the "
-                             "individual bounds below.")
-
-    parser.add_argument("--t-index", type=int, default=0, help="Time index")
+    parser.add_argument("--t-min", type=_parse_optional_int, default=None,
+                         help="First timepoint index to process (inclusive). Defaults to 0.")
+    parser.add_argument("--t-max", type=_parse_optional_int, default=None,
+                         help="Last timepoint index to process (exclusive). Defaults to full extent.")
     parser.add_argument("--c-index", type=int, default=0, help="Input channel index fed to Ilastik")
     parser.add_argument("--z-min", type=_parse_optional_int, default=None, help="Min Z index")
     parser.add_argument("--z-max", type=_parse_optional_int, default=None, help="Max Z index")
@@ -416,20 +411,22 @@ def main():
     ilastik_args.project = args.project
     shell = app.main(ilastik_args)
 
-    # Figure out tiles to process
-    if args.tiles_json:
-        with open(args.tiles_json, "r") as f:
-            tiles = json.load(f)
-        if not isinstance(tiles, list):
-            raise ValueError(f"{args.tiles_json} must contain a JSON list of tile objects.")
-    else:
-        # Fallback to single tile
-        tiles = [{
+    shape_t = in_store.shape[0]
+    t_start = args.t_min if args.t_min is not None else 0
+    t_end = args.t_max if args.t_max is not None else shape_t
+
+    if not (0 <= t_start < t_end <= shape_t):
+        raise ValueError(f"Bad t range [{t_start}, {t_end}) for extent {shape_t}.")
+
+        tiles = [
+            {
             "y_min": args.y_min, "y_max": args.y_max,
             "x_min": args.x_min, "x_max": args.x_max,
             "z_min": args.z_min, "z_max": args.z_max,
-            "t_index": args.t_index
-        }]
+            "t_index": t
+            }
+        for t in range(t_start, t_end)
+        ]
 
     for tile in tiles:
         process_single_tile(tile, in_store, out_store, shell, args, is_2d_model, halo, n_classes)
