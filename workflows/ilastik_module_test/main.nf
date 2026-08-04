@@ -19,7 +19,7 @@ workflow {
     ILASTIK_ZARR(ilastik_input_ch, ch_project)
 
     ch_ready_for_pyramid = ILASTIK_ZARR.out.zarr
-        .map { meta, output_zarr -> tuple(meta.id, meta, output_zarr) }
+        .map { tileMeta, output_zarr -> tuple(tileMeta.id, tileMeta, output_zarr) }
         .groupTuple(by: 0)
         .map { id, metas, zarrs -> tuple(metas[0], zarrs[0]) }
 
