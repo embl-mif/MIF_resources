@@ -7,4 +7,4 @@ dependencies:
   - zarr
   - pip
   - pip:
-      - "git+https://github.com/nvivanco/squirrel.git@generalize-pyramid"
+      - "git+https://github.com/embl-ic/squirrel.git"
