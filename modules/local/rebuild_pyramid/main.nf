@@ -13,10 +13,10 @@ process REBUILD_PYRAMID {
     script:
     def n_threads = task.cpus ?: 1
     """
-    pyramid_rebuild.py \
+    rebuild_pyramid.py \
         --output-zarr "${output_zarr}" \
         --downsample-method Average \
-        --n-threads ${n_threads} \
+        --n-threads ${n_threads}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
