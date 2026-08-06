@@ -13,7 +13,7 @@ workflow {
     config_csv_ch = TILECONSTRUCTOR_INPUT_PREP(params.input_dir, params.resolution_level)
 
     // Read parent images and metadata from the input CSV file
-    input_ch = config_csv_ch
+    input_ch = config_csv_ch.csv
         .splitCsv(header: true)
         .map { row ->
             def meta = [
