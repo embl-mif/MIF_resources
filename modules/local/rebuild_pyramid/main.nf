@@ -4,10 +4,10 @@ process REBUILD_PYRAMID {
     conda "${moduleDir}/environment.yml"
 
     input:
-    tuple val(meta), path(output_zarr)
+    tuple val(meta), val(output_zarr)
 
     output:
-    tuple val(meta), path(output_zarr), emit: zarr
+    tuple val(meta), val(output_zarr), emit: zarr
     path "versions.yml",                emit: versions
 
     script:
