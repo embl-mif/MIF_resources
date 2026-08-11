@@ -30,7 +30,7 @@ process TILE_CONSTRUCTOR {
     }
 
     """
-    tile_constructor.py \\
+    tile_constructor_2.py \\
         --source-dataset-id "${meta.id}" \\
         --input-image-path \"${image}\" \\
         --output-csv ${output_csv} \\
