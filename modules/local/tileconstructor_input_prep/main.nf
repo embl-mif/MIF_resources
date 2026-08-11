@@ -5,7 +5,7 @@ process TILECONSTRUCTOR_INPUT_PREP {
 
 
     input:
-    path input_dir
+    val input_dir
     val resolution_level
 
     output:
