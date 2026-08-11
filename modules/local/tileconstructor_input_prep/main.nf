@@ -9,7 +9,7 @@ process TILECONSTRUCTOR_INPUT_PREP {
     val resolution_level
 
     output:
-    path "tile_constructor_config.csv"     emit: csv
+    path "tile_constructor_config.csv",    emit: csv
     path "versions.yml",                   emit: versions
     when:
     task.ext.when == null || task.ext.when
