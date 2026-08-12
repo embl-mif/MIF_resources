@@ -22,7 +22,8 @@ workflow {
     ULTRACK_TRACK(ch_ultrack, ch_config_toml)
 
 
-REBUILD_PYRAMID(
-    ULTRACK_TRACK.out.segments,
-    downsample_method: "Sample"
-)
+    REBUILD_PYRAMID(
+        ULTRACK_TRACK.out.segments,
+        downsample_method: "Sample"
+    )
+}
