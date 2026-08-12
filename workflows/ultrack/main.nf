@@ -19,7 +19,7 @@ workflow {
     ch_ultrack = Channel.of([ ultrack_meta, null, prob_zarr, null, raw_image ])
     ch_config_toml = params.ultrack_config ? file(params.ultrack_config) : []
 
-    ULTRACK_TRACK(ch_ultrack, ch_config_toml)
+    ULTRACK(ch_ultrack, ch_config_toml)
 
 
     REBUILD_PYRAMID(
