@@ -15,7 +15,7 @@ workflow {
     ultrack_meta.foreground_channel = 1   // "cells"
     ultrack_meta.contours_channel   = null
     ultrack_meta.raw_channel        = 0   // brightfield
-
+    ultrack_meta.downsample_method  = "Sample"
     ch_ultrack = Channel.of([ ultrack_meta, null, prob_zarr, null, raw_image ])
     ch_config_toml = params.ultrack_config ? file(params.ultrack_config) : []
 
@@ -23,7 +23,6 @@ workflow {
 
 
     REBUILD_PYRAMID(
-        ULTRACK.out.segments,
-        downsample_method: "Sample"
+        ULTRACK.out.segments
     )
 }
