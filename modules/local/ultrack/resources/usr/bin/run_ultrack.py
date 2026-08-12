@@ -13,7 +13,7 @@ import numpy as np
 import zarr
 import pymif.microscope_manager as mm
 from ultrack import MainConfig, load_config, track, to_tracks_layer, tracks_to_zarr
-
+from ultrack.imgproc import detect_foreground, robust_invert
 
 def _open_array(path: str, level: str = "0"):
     root = zarr.open(path, mode="r")
@@ -63,6 +63,12 @@ def main():
     parser.add_argument("--contours-zarr", type=str, default=None)
     parser.add_argument("--foreground-channel", type=int, default=None)
     parser.add_argument("--contours-channel", type=int, default=None)
+    parser.add_argument("--derive-contours-from-raw", type=str, default=None,
+                         help="Path to the raw intensity OME-Zarr. If given (and "
+                              "--contours-zarr is not), contours are computed via "
+                              "ultrack.imgproc.robust_invert on this raw data.")
+    parser.add_argument("--raw-channel", type=int, default=None,
+                         help="Channel index to select from --derive-contours-from-raw, if multi-channel.")
 
     parser.add_argument("--config-toml", type=str, default=None)
     parser.add_argument("--working-dir", type=str, required=True)
@@ -80,10 +86,15 @@ def main():
 
     if args.labels_zarr and (args.foreground_zarr or args.contours_zarr):
         parser.error("--labels-zarr is mutually exclusive with --foreground-zarr/--contours-zarr.")
-    if bool(args.foreground_zarr) != bool(args.contours_zarr):
-        parser.error("--foreground-zarr and --contours-zarr must be given together.")
-    if not args.labels_zarr and not args.foreground_zarr:
-        parser.error("Provide either --labels-zarr, or both --foreground-zarr and --contours-zarr.")
+    if not args.labels_zarr:
+        if not args.foreground_zarr:
+            parser.error("Provide either --labels-zarr, or --foreground-zarr with contours "
+                          "(--contours-zarr, or --derive-contours-from-raw).")
+        if args.contours_zarr and args.derive_contours_from_raw:
+            parser.error("--contours-zarr and --derive-contours-from-raw are mutually exclusive.")
+        if not args.contours_zarr and not args.derive_contours_from_raw:
+            parser.error("Provide either --contours-zarr or --derive-contours-from-raw alongside --foreground-zarr.")
+
 
     config = load_config(args.config_toml) if args.config_toml else MainConfig()
     config.data_config.working_dir = Path(args.working_dir)
@@ -103,10 +114,18 @@ def main():
         if args.foreground_channel is not None:
             foreground = foreground[:, args.foreground_channel]
 
-        print(f"[Ultrack] Loading contours from {args.contours_zarr}")
-        contours = _open_array(args.contours_zarr)
-        if args.contours_channel is not None:
-            contours = contours[:, args.contours_channel]
+        if args.contours_zarr:
+            print(f"[Ultrack] Loading contours from {args.contours_zarr}")
+            contours = _open_array(args.contours_zarr)
+            if args.contours_channel is not None:
+                contours = contours[:, args.contours_channel]
+        else:
+            print(f"[Ultrack] Deriving contours via robust_invert on {args.derive_contours_from_raw}")
+            raw = _open_array(args.derive_contours_from_raw)
+            if args.raw_channel is not None:
+                raw = raw[:, args.raw_channel]
+            raw = np.asarray(raw)
+            contours = robust_invert(raw, voxel_size=scale)
 
         print(f"[Ultrack] foreground shape: {foreground.shape}, contours shape: {contours.shape}")
         track(config, foreground=foreground, contours=contours, scale=scale, overwrite=args.overwrite)
