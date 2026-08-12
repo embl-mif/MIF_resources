@@ -2,7 +2,7 @@
 
 nextflow.enable.dsl = 2
 
-include { ULTRACK_TRACK   } from '../../modules/local/ultrack_track/main'
+include { ULTRACK   } from '../../modules/local/ultrack/main'
 include { REBUILD_PYRAMID } from '../../modules/local/rebuild_pyramid/main'
 
 workflow {
