@@ -1,4 +1,4 @@
-process ULTRACK_TRACK {
+process ULTRACK {
     tag "$meta.id"
     label 'process_high'
     label 'gpu'
