@@ -6,7 +6,7 @@ include { ULTRACK   } from '../../modules/local/ultrack/main'
 include { REBUILD_PYRAMID } from '../../modules/local/rebuild_pyramid/main'
 
 workflow {
-    def meta = [ id: params.dataset_id ?: "test_dataset" ]
+    def meta =  [ id: "test_dataset" ]
 
     def prob_zarr = params.probabilities_zarr   // absolute path string
     def raw_image = params.input_zarr
@@ -23,7 +23,7 @@ workflow {
 
 
     REBUILD_PYRAMID(
-        ULTRACK_TRACK.out.segments,
+        ULTRACK.out.segments,
         downsample_method: "Sample"
     )
 }
