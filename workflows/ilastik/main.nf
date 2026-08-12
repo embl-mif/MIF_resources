@@ -4,7 +4,7 @@ nextflow.enable.dsl = 2
 
 include { TILECONSTRUCTOR_INPUT_PREP    } from '../../modules/local/tileconstructor_input_prep/main'
 include { TILE_CONSTRUCTOR              } from '../../modules/local/tileconstructor/main'
-include { ILASTIK_ZARR } from '../../modules/local/ilastik_zarr/main'
+include { ILASTIK_ZARR }                  from '../../modules/local/ilastik_zarr/main'
 include { REBUILD_PYRAMID               } from '../../modules/local/rebuild_pyramid/main'
 
 workflow {
