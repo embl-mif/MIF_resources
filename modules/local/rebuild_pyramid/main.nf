@@ -12,10 +12,11 @@ process REBUILD_PYRAMID {
 
     script:
     def n_threads = task.cpus ?: 1
+    def downsample_method = meta.downsample_method ?: "Average"
     """
     rebuild_pyramid.py \
         --output-zarr "${output_zarr}" \
-        --downsample-method Average \
+        --downsample-method ${downsample_method} \
         --n-threads ${n_threads}
 
     cat <<-END_VERSIONS > versions.yml
