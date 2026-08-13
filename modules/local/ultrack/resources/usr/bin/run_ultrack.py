@@ -127,8 +127,15 @@ def main():
             if args.raw_channel is not None:
                 raw = raw[:, args.raw_channel]
             raw = np.asarray(raw)
-            raw_voxel_size = [1.0] + list(scale)
-            contours = robust_invert(raw, voxel_size=raw_voxel_size)
+            print(f"[Ultrack] raw shape going into robust_invert: {raw.shape}, dtype: {raw.dtype}")
+            raw_2d_per_t = raw.squeeze(axis=1) if raw.ndim == 4 and raw.shape[1] == 1 else raw
+            print(f"[Ultrack] per-timepoint image shape for robust_invert: {raw_2d_per_t.shape[1:]}")
+
+            contours_frames = []
+            for t in range(raw_2d_per_t.shape[0]):
+                frame_contours = robust_invert(raw_2d_per_t[t], voxel_size=scale[1:])  # y,x only, 2D
+                contours_frames.append(frame_contours)
+            contours = np.stack(contours_frames, axis=0)
 
         print(f"[Ultrack] foreground shape: {foreground.shape}, contours shape: {contours.shape}")
         track(config, foreground=foreground, contours=contours, scale=scale, overwrite=args.overwrite)
