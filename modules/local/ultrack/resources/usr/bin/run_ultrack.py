@@ -57,6 +57,13 @@ def _write_segments_skeleton(segments: np.ndarray, output_path: str, scale_zyx):
     arr[:] = segments
     return output_path
 
+def _squeeze_singleton_z(arr: np.ndarray) -> np.ndarray:
+    """If arr is (T, Z, Y, X) with Z==1, squeeze to (T, Y, X). Leaves
+    3D (real z-depth) or already-2D arrays unchanged."""
+    if arr.ndim == 4 and arr.shape[1] == 1:
+        return arr.squeeze(axis=1)
+    return arr
+
 def main():
     parser = argparse.ArgumentParser(description="Run ultrack cell tracking on a timelapse.")
 
@@ -108,6 +115,7 @@ def main():
         labels = _open_array(args.labels_zarr)
         if args.foreground_channel is not None:
             labels = labels[:, args.foreground_channel]
+        labels = _squeeze_singleton_z(np.asarray(labels))
         print(f"[Ultrack] labels shape: {labels.shape}")
         track(config, labels=labels, scale=scale, overwrite=args.overwrite)
     else:
@@ -115,25 +123,27 @@ def main():
         foreground = _open_array(args.foreground_zarr)
         if args.foreground_channel is not None:
             foreground = foreground[:, args.foreground_channel]
+        foreground = _squeeze_singleton_z(np.asarray(foreground))
 
         if args.contours_zarr:
             print(f"[Ultrack] Loading contours from {args.contours_zarr}")
             contours = _open_array(args.contours_zarr)
             if args.contours_channel is not None:
                 contours = contours[:, args.contours_channel]
+            contours = _squeeze_singleton_z(np.asarray(contours))
         else:
             print(f"[Ultrack] Deriving contours via robust_invert on {args.derive_contours_from_raw}")
             raw = _open_array(args.derive_contours_from_raw)
             if args.raw_channel is not None:
                 raw = raw[:, args.raw_channel]
-            raw = np.asarray(raw)
+            raw = _squeeze_singleton_z(np.asarray(raw))
             print(f"[Ultrack] raw shape going into robust_invert: {raw.shape}, dtype: {raw.dtype}")
-            raw_2d_per_t = raw.squeeze(axis=1) if raw.ndim == 4 and raw.shape[1] == 1 else raw
-            print(f"[Ultrack] per-timepoint image shape for robust_invert: {raw_2d_per_t.shape[1:]}")
+            has_z = raw.ndim == 4
+            voxel_size_per_frame = scale if has_z else scale[1:]
 
             contours_frames = []
-            for t in range(raw_2d_per_t.shape[0]):
-                frame_contours = robust_invert(raw_2d_per_t[t], voxel_size=scale[1:])  # y,x only, 2D
+            for t in range(raw.shape[0]):
+                frame_contours = robust_invert(raw[t], voxel_size=voxel_size_per_frame)
                 contours_frames.append(frame_contours)
             contours = np.stack(contours_frames, axis=0)
 
