@@ -66,7 +66,7 @@ workflow {
     ch_ready_for_pyramid = ILASTIK_ZARR.out.zarr
         .map { meta, output_zarr -> tuple(meta.id, meta, output_zarr) }
         .groupTuple(by: 0)
-        .map { id, metas, zarrs -> tuple(metas[0], zarrs[0]) }
+        .map { id, metas, zarrs -> tuple(metas[0], zarrs[0], "Average") } // downsample method = average if using prob
 
     REBUILD_PYRAMID(ch_ready_for_pyramid)
 }

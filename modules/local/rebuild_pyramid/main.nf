@@ -4,15 +4,14 @@ process REBUILD_PYRAMID {
     conda "${moduleDir}/environment.yml"
 
     input:
-    tuple val(meta), val(output_zarr)
+    tuple val(meta), val(output_zarr), val(downsample_method)
 
     output:
-    tuple val(meta), val(output_zarr), emit: zarr
+    tuple val(meta), val(output_zarr),  emit: zarr
     path "versions.yml",                emit: versions
 
     script:
     def n_threads = task.cpus ?: 1
-    def downsample_method = meta.downsample_method ?: "Average"
     """
     rebuild_pyramid.py \
         --output-zarr "${output_zarr}" \

@@ -15,14 +15,13 @@ workflow {
     ultrack_meta.foreground_channel = 1   // "cells"
     ultrack_meta.contours_channel   = null
     ultrack_meta.raw_channel        = 0   // brightfield
-    ultrack_meta.downsample_method  = "Sample"
+
     ch_ultrack = Channel.of([ ultrack_meta, null, prob_zarr, null, raw_image ])
     ch_config_toml = params.ultrack_config ? file(params.ultrack_config) : []
 
     ULTRACK(ch_ultrack, ch_config_toml)
+    ch_ready_for_pyramid = ULTRACK.out.segments
+        .map { m, output_zarr -> tuple(m, output_zarr, "Sample") } // downsample methos = sample for int
 
-
-    REBUILD_PYRAMID(
-        ULTRACK.out.segments
-    )
+    REBUILD_PYRAMID(ch_ready_for_pyramid)
 }
