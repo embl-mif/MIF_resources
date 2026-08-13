@@ -127,7 +127,8 @@ def main():
             if args.raw_channel is not None:
                 raw = raw[:, args.raw_channel]
             raw = np.asarray(raw)
-            contours = robust_invert(raw, voxel_size=scale)
+            raw_voxel_size = [1.0] + list(scale)
+            contours = robust_invert(raw, voxel_size=raw_voxel_size)
 
         print(f"[Ultrack] foreground shape: {foreground.shape}, contours shape: {contours.shape}")
         track(config, foreground=foreground, contours=contours, scale=scale, overwrite=args.overwrite)
