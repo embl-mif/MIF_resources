@@ -6,7 +6,7 @@ process ZARR_FEATURE_EXTRACTION {
     conda "${moduleDir}/environment.yml"
 
     input:
-    tuple val(meta), path(zarr_store)
+    tuple val(meta), val(zarr_store)
     val intensity_comp
     val label_comp
 
