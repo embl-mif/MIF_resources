@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ultrack cell tracking wrapper: consumes either an ilastik probability
+"""Ultrack cell tracking wrapper, zarr v2 only compatible: consumes either an ilastik probability
 store (foreground+contours) or Cellpose/SAM instance labels, tracks the
 full timelapse in one job, and writes tracks.csv + a segments OME-Zarr
 skeleton (level 0 only, via pymif's ZarrManager).
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import zarr
-import pymif.microscope_manager as mm
+
 from ultrack import MainConfig, load_config, track, to_tracks_layer, tracks_to_zarr
 from ultrack.imgproc import detect_foreground, robust_invert
 
@@ -19,10 +19,10 @@ def _open_array(path: str, level: str = "0"):
     root = zarr.open(path, mode="r")
     return root[level] if isinstance(root, zarr.hierarchy.Group) and level in root else root
 
-
 def _write_segments_skeleton(segments: np.ndarray, output_path: str, scale_zyx):
-    """Write ultrack's raw label array as OME-Zarr level 0 only, via pymif's
-    ZarrManager"""
+    """Write ultrack's raw label array as OME-Zarr level 0 only, using plain
+    zarr (no extra dependencies) -- REBUILD_PYRAMID (squirrel) fills in the
+    remaining levels downstream, same pattern as the ilastik probability store."""
     ndim = segments.ndim
     if ndim == 3:
         segments = segments.reshape(segments.shape[0], 1, 1, *segments.shape[1:])
@@ -31,29 +31,31 @@ def _write_segments_skeleton(segments: np.ndarray, output_path: str, scale_zyx):
     else:
         raise ValueError(f"Unexpected segments array ndim={ndim}, shape={segments.shape}")
 
+    root = zarr.group(store=zarr.DirectoryStore(output_path), overwrite=True)
+
+    axes = [
+        {"name": "t", "type": "time", "unit": "second"},
+        {"name": "c", "type": "channel"},
+        {"name": "z", "type": "space", "unit": "micrometer"},
+        {"name": "y", "type": "space", "unit": "micrometer"},
+        {"name": "x", "type": "space", "unit": "micrometer"},
+    ]
+    scale = [1.0, 1.0] + list(scale_zyx)
+    root.attrs["multiscales"] = [{
+        "version": "0.4",
+        "name": "segments",
+        "axes": axes,
+        "datasets": [{"path": "0", "coordinateTransformations": [{"type": "scale", "scale": scale}]}],
+        "type": "labels",
+    }]
+
     chunks = (1, 1, min(64, segments.shape[2]), min(256, segments.shape[3]), min(256, segments.shape[4]))
-
-    z = mm.ZarrManager(
-        output_path,
-        mode="a",
-        metadata={
-            "size": [segments.shape],
-            "chunksize": [chunks],
-            "scales": [tuple([1.0, 1.0] + list(scale_zyx))],
-            "units": ("second", "", "micrometer", "micrometer", "micrometer"),
-            "axes": "tczyx",
-            "dtype": str(segments.dtype),
-            "data_type": "label",
-        },
+    arr = root.create_dataset(
+        "0", shape=segments.shape, chunks=chunks, dtype=segments.dtype,
+        compressor=None, fill_value=0, dimension_separator="/",
     )
-    z.write_image_region(
-        segments,
-        t=slice(0, segments.shape[0]), c=slice(0, 1),
-        z=slice(0, segments.shape[2]), y=slice(0, segments.shape[3]), x=slice(0, segments.shape[4]),
-        level=0,
-    )
+    arr[:] = segments
     return output_path
-
 
 def main():
     parser = argparse.ArgumentParser(description="Run ultrack cell tracking on a timelapse.")
