@@ -9,7 +9,7 @@ process ULTRACK {
     path  config_toml
 
     output:
-    tuple val(meta), val(output_segments_zarr), emit: segments
+    tuple val(meta), val(output_tracked_zarr),  emit: tracked_zarr
     tuple val(meta), path(output_tracks_csv),   emit: tracks
     path "versions.yml",                        emit: versions
 
@@ -56,7 +56,7 @@ process ULTRACK {
         ${config_arg} \\
         --working-dir ${working_dir} \\
         --output-tracks-csv ${output_tracks_csv} \\
-        --output-segments-zarr ${output_segments_zarr} \\
+        --output-segments-zarr ${output_tracked_zarr} \\
         --n-threads ${n_threads} \\
         ${min_area_arg} \\
         ${max_area_arg} \\

@@ -28,7 +28,7 @@ workflow {
     ch_config_toml = params.ultrack_config ? file(params.ultrack_config) : []
 
     ULTRACK(ch_ultrack, ch_config_toml)
-    ch_ready_for_pyramid = ULTRACK.out.segments
+    ch_ready_for_pyramid = ULTRACK.out.tracked_zarr
         .map { m, output_zarr -> tuple(m, output_zarr, "Sample") } // downsample methos = sample for int
 
     REBUILD_PYRAMID(ch_ready_for_pyramid)
