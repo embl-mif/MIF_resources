@@ -21,6 +21,7 @@ process ULTRACK {
     output_tracks_csv   = "${meta.id}_tracks.csv"
     output_segments_zarr = "${meta.id}_segments.zarr"
     def working_dir = "${meta.id}_ultrack_db"
+    def n_threads = task.cpus ?: 1
     def config_arg     = config_toml ? "--config-toml ${config_toml}" : ""
     def labels_arg      = labels_zarr    ? "--labels-zarr \"${labels_zarr}\""       : ""
     def foreground_arg  = foreground_zarr ? "--foreground-zarr \"${foreground_zarr}\"" : ""
@@ -47,6 +48,7 @@ process ULTRACK {
         --working-dir ${working_dir} \\
         --output-tracks-csv ${output_tracks_csv} \\
         --output-segments-zarr ${output_segments_zarr} \\
+        --n-threads ${n_threads} \\
         ${scale_z_arg} \\
         ${scale_y_arg} \\
         ${scale_x_arg} \\

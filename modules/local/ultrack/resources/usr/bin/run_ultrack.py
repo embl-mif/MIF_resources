@@ -83,7 +83,7 @@ def main():
 
     parser.add_argument("--config-toml", type=str, default=None)
     parser.add_argument("--working-dir", type=str, required=True)
-
+    parser.add_argument("--n-threads", type=int, default=1, help="Thread count for segmentation/tracking.")
     parser.add_argument("--scale-z", type=float, default=1.0)
     parser.add_argument("--scale-y", type=float, default=1.0)
     parser.add_argument("--scale-x", type=float, default=1.0)
@@ -109,6 +109,8 @@ def main():
 
     config = load_config(args.config_toml) if args.config_toml else MainConfig()
     config.data_config.working_dir = Path(args.working_dir)
+    config.segmentation_config.n_workers = args.n_threads
+    config.tracking_config.n_threads = args.n_threads
 
     scale = [args.scale_z, args.scale_y, args.scale_x]
 
