@@ -2,7 +2,7 @@
 """Ultrack cell tracking wrapper, zarr v2 only compatible: consumes either an ilastik probability
 store (foreground+contours) or Cellpose/SAM instance labels, tracks the
 full timelapse in one job, and writes tracks.csv + a segments OME-Zarr
-skeleton (level 0 only, via pymif's ZarrManager).
+skeleton (level 0 only).
 API reference: https://royerlab.github.io/ultrack/api.html
 """
 import sys
@@ -15,7 +15,7 @@ import numpy as np
 import zarr
 
 from ultrack import MainConfig, load_config, track, to_tracks_layer, tracks_to_zarr
-from ultrack.imgproc import detect_foreground, robust_invert
+from ultrack.imgproc import robust_invert
 
 def _open_array(path: str, level: str = "0"):
     root = zarr.open(path, mode="r")
@@ -23,8 +23,8 @@ def _open_array(path: str, level: str = "0"):
 
 def _write_segments_skeleton(segments: np.ndarray, output_path: str, scale_zyx):
     """Write ultrack's raw label array as OME-Zarr level 0 only, using plain
-    zarr (no extra dependencies) -- REBUILD_PYRAMID (squirrel) fills in the
-    remaining levels downstream, same pattern as the ilastik probability store."""
+    zarr -- REBUILD_PYRAMID (squirrel) fills in the
+    remaining levels downstream."""
     ndim = segments.ndim
     if ndim == 3:
         segments = segments.reshape(segments.shape[0], 1, 1, *segments.shape[1:])
@@ -116,8 +116,8 @@ def main():
 
     args = parser.parse_args()
 
-    if args.labels_zarr and (args.foreground_zarr or args.contours_zarr):
-        parser.error("--labels-zarr is mutually exclusive with --foreground-zarr/--contours-zarr.")
+    if args.labels_zarr and (args.foreground_zarr or args.contours_zarr or args.derive_contours_from_raw):
+        parser.error("--labels-zarr is mutually exclusive with --foreground-zarr/--contours-zarr/--derive-contours-from-raw.")
     if not args.labels_zarr:
         if not args.foreground_zarr:
             parser.error("Provide either --labels-zarr, or --foreground-zarr with contours "
@@ -193,7 +193,7 @@ def main():
     tracks_df, graph = to_tracks_layer(config)
     tracks_df.to_csv(args.output_tracks_csv, index=False)
 
-    print("[Ultrack] Writing segments skeleton (level 0 only, via pymif)")
+    print("[Ultrack] Writing segments skeleton (level 0 only)")
     segments = tracks_to_zarr(config, tracks_df, overwrite=True)
     _write_segments_skeleton(np.asarray(segments), args.output_segments_zarr, scale)
 

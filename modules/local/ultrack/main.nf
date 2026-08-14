@@ -55,7 +55,7 @@ process ULTRACK {
         --output-tracks-csv ${output_tracks_csv} \\
         --output-segments-zarr ${output_segments_zarr} \\
         --n-threads ${n_threads} \\
-         ${min_area_arg} \\
+        ${min_area_arg} \\
         ${max_area_arg} \\
         ${max_distance_arg} \\
         ${distance_weight_arg} \\
