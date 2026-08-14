@@ -24,7 +24,7 @@ workflow {
     ultrack_meta.max_distance   = 10.0
     ultrack_meta.solution_gap   = 0.1
     ultrack_meta.time_limit     = 600
-    ch_ultrack = Channel.of([ ultrack_meta, null, prob_zarr, null, raw_image ])
+    ch_ultrack = Channel.of([ ultrack_meta, null, prob_zarr, null, raw_image, output_tracked_zarr ])
     ch_config_toml = params.ultrack_config ? file(params.ultrack_config) : []
 
     ULTRACK(ch_ultrack, ch_config_toml)

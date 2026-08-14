@@ -5,7 +5,7 @@ process ULTRACK {
     container "docker.io/royerlab/ultrack:0.6.1-cuda12.4"
 
     input:
-    tuple val(meta), val(labels_zarr), val(foreground_zarr), val(contours_zarr), val(raw_zarr)
+    tuple val(meta), val(labels_zarr), val(foreground_zarr), val(contours_zarr), val(raw_zarr), val(output_tracked_zarr)
     path  config_toml
 
     output:
@@ -19,7 +19,6 @@ process ULTRACK {
     script:
     def args = task.ext.args ?: ''
     output_tracks_csv   = "${meta.id}_tracks.csv"
-    output_segments_zarr = "${meta.id}_segments.zarr"
     def working_dir = "${meta.id}_ultrack_db"
     def n_threads = task.cpus ?: 1
     def t_min_arg = meta.t_min != null ? "--t-min ${meta.t_min}" : ""
