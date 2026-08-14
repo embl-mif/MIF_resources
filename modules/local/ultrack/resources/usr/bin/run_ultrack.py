@@ -66,6 +66,19 @@ def _squeeze_singleton_z(arr: np.ndarray) -> np.ndarray:
         return arr.squeeze(axis=1)
     return arr
 
+def _load_time_sliced(path: str, channel: int, t_min: int, t_max: int):
+    """Open a zarr array, select a channel, and slice to [t_min, t_max), only the requested timepoints are read
+    from disk."""
+    arr = _open_array(path)
+    if channel is not None:
+        arr = arr[:, channel]
+    shape_t = arr.shape[0]
+    t_start = t_min if t_min is not None else 0
+    t_end = t_max if t_max is not None else shape_t
+    if not (0 <= t_start < t_end <= shape_t):
+        raise ValueError(f"Bad t range [{t_start}, {t_end}) for extent {shape_t}.")
+    return np.asarray(arr[t_start:t_end])
+
 def main():
     parser = argparse.ArgumentParser(description="Run ultrack cell tracking on a timelapse.")
 
@@ -84,6 +97,10 @@ def main():
     parser.add_argument("--config-toml", type=str, default=None)
     parser.add_argument("--working-dir", type=str, required=True)
     parser.add_argument("--n-threads", type=int, default=1, help="Thread count for segmentation/tracking.")
+    parser.add_argument("--t-min", type=int, default=None,
+                         help="First timepoint index to process (inclusive). Defaults to 0.")
+    parser.add_argument("--t-max", type=int, default=None,
+                         help="Last timepoint index to process (exclusive). Defaults to full extent.")
     parser.add_argument("--scale-z", type=float, default=1.0)
     parser.add_argument("--scale-y", type=float, default=1.0)
     parser.add_argument("--scale-x", type=float, default=1.0)
@@ -150,32 +167,24 @@ def main():
     scale = [args.scale_z, args.scale_y, args.scale_x]
 
     if args.labels_zarr:
-        print(f"[Ultrack] Loading labels from {args.labels_zarr}")
-        labels = _open_array(args.labels_zarr)
-        if args.foreground_channel is not None:
-            labels = labels[:, args.foreground_channel]
-        labels = _squeeze_singleton_z(np.asarray(labels))
+        print(f"[Ultrack] Loading labels from {args.labels_zarr} (t=[{args.t_min},{args.t_max}))")
+        labels = _load_time_sliced(args.labels_zarr, args.foreground_channel, args.t_min, args.t_max)
+        labels = _squeeze_singleton_z(labels)
         print(f"[Ultrack] labels shape: {labels.shape}")
         track(config, labels=labels, scale=scale, overwrite=args.overwrite)
     else:
-        print(f"[Ultrack] Loading foreground from {args.foreground_zarr}")
-        foreground = _open_array(args.foreground_zarr)
-        if args.foreground_channel is not None:
-            foreground = foreground[:, args.foreground_channel]
-        foreground = _squeeze_singleton_z(np.asarray(foreground))
+        print(f"[Ultrack] Loading foreground from {args.foreground_zarr} (t=[{args.t_min},{args.t_max}))")
+        foreground = _load_time_sliced(args.foreground_zarr, args.foreground_channel, args.t_min, args.t_max)
+        foreground = _squeeze_singleton_z(foreground)
 
         if args.contours_zarr:
-            print(f"[Ultrack] Loading contours from {args.contours_zarr}")
-            contours = _open_array(args.contours_zarr)
-            if args.contours_channel is not None:
-                contours = contours[:, args.contours_channel]
-            contours = _squeeze_singleton_z(np.asarray(contours))
+            print(f"[Ultrack] Loading contours from {args.contours_zarr} (t=[{args.t_min},{args.t_max}))")
+            contours = _load_time_sliced(args.contours_zarr, args.contours_channel, args.t_min, args.t_max)
+            contours = _squeeze_singleton_z(contours)
         else:
-            print(f"[Ultrack] Deriving contours via robust_invert on {args.derive_contours_from_raw}")
-            raw = _open_array(args.derive_contours_from_raw)
-            if args.raw_channel is not None:
-                raw = raw[:, args.raw_channel]
-            raw = _squeeze_singleton_z(np.asarray(raw))
+            print(f"[Ultrack] Deriving contours via robust_invert on {args.derive_contours_from_raw} (t=[{args.t_min},{args.t_max}))")
+            raw = _load_time_sliced(args.derive_contours_from_raw, args.raw_channel, args.t_min, args.t_max)
+            raw = _squeeze_singleton_z((raw)
             print(f"[Ultrack] raw shape going into robust_invert: {raw.shape}, dtype: {raw.dtype}")
             has_z = raw.ndim == 4
             voxel_size_per_frame = scale if has_z else scale[1:]
