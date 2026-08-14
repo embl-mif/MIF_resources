@@ -5,6 +5,8 @@ full timelapse in one job, and writes tracks.csv + a segments OME-Zarr
 skeleton (level 0 only, via pymif's ZarrManager).
 API reference: https://royerlab.github.io/ultrack/api.html
 """
+import sys
+sys.modules["gurobipy"] = None
 
 import argparse
 from pathlib import Path
