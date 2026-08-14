@@ -184,7 +184,7 @@ def main():
         else:
             print(f"[Ultrack] Deriving contours via robust_invert on {args.derive_contours_from_raw} (t=[{args.t_min},{args.t_max}))")
             raw = _load_time_sliced(args.derive_contours_from_raw, args.raw_channel, args.t_min, args.t_max)
-            raw = _squeeze_singleton_z((raw)
+            raw = _squeeze_singleton_z(raw)
             print(f"[Ultrack] raw shape going into robust_invert: {raw.shape}, dtype: {raw.dtype}")
             has_z = raw.ndim == 4
             voxel_size_per_frame = scale if has_z else scale[1:]
