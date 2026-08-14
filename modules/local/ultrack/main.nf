@@ -32,6 +32,12 @@ process ULTRACK {
     def foreground_channel_arg = meta.foreground_channel != null ? "--foreground-channel ${meta.foreground_channel}" : ""
     def contours_channel_arg   = meta.contours_channel   != null ? "--contours-channel ${meta.contours_channel}"     : ""
     def raw_channel_arg        = meta.raw_channel        != null ? "--raw-channel ${meta.raw_channel}"               : ""
+    def min_area_arg      = meta.min_area      != null ? "--min-area ${meta.min_area}"           : ""
+    def max_area_arg      = meta.max_area      != null ? "--max-area ${meta.max_area}"            : ""
+    def max_distance_arg  = meta.max_distance  != null ? "--max-distance ${meta.max_distance}"    : ""
+    def distance_weight_arg = meta.distance_weight != null ? "--distance-weight ${meta.distance_weight}" : ""
+    def solution_gap_arg  = meta.solution_gap  != null ? "--solution-gap ${meta.solution_gap}"     : ""
+    def time_limit_arg    = meta.time_limit    != null ? "--time-limit ${meta.time_limit}"         : ""
     def scale_z_arg = meta.scale_z != null ? "--scale-z ${meta.scale_z}" : ""
     def scale_y_arg = meta.scale_y != null ? "--scale-y ${meta.scale_y}" : ""
     def scale_x_arg = meta.scale_x != null ? "--scale-x ${meta.scale_x}" : ""
@@ -49,6 +55,12 @@ process ULTRACK {
         --output-tracks-csv ${output_tracks_csv} \\
         --output-segments-zarr ${output_segments_zarr} \\
         --n-threads ${n_threads} \\
+         ${min_area_arg} \\
+        ${max_area_arg} \\
+        ${max_distance_arg} \\
+        ${distance_weight_arg} \\
+        ${solution_gap_arg} \\
+        ${time_limit_arg} \\
         ${scale_z_arg} \\
         ${scale_y_arg} \\
         ${scale_x_arg} \\

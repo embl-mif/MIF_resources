@@ -87,6 +87,27 @@ def main():
     parser.add_argument("--scale-z", type=float, default=1.0)
     parser.add_argument("--scale-y", type=float, default=1.0)
     parser.add_argument("--scale-x", type=float, default=1.0)
+    # Segmentation tuning
+    parser.add_argument("--min-area", type=int, default=None,
+                         help="Minimum segment/cell area (pixels). Discards segments smaller than this.")
+    parser.add_argument("--max-area", type=int, default=None,
+                         help="Maximum segment/cell area (pixels). Discards segments larger than this.")
+
+    # Linking tuning, how far (in scaled units) a cell may move between
+    # consecutive frames to be considered a candidate link.
+    parser.add_argument("--max-distance", type=float, default=None,
+                         help="Maximum linking distance between consecutive frames (same units as --scale-*).")
+
+    # Solve tuning -- trade optimality for speed/memory on the ILP solve.
+    parser.add_argument("--solution-gap", type=float, default=None,
+                         help="ILP solver optimality gap (larger = faster/less memory, less optimal).")
+    parser.add_argument("--time-limit", type=int, default=None,
+                         help="ILP solver time limit in seconds.")
+    parser.add_argument("--distance-weight", type=float, default=None,
+                         help="Weight given to link distance in the ILP objective. "
+                              "0 (default) ignores distance beyond the --max-distance cutoff; "
+                              "higher values bias the solver toward shorter links when choosing "
+                              "among ambiguous candidates.")
 
     parser.add_argument("--output-tracks-csv", type=str, required=True)
     parser.add_argument("--output-segments-zarr", type=str, required=True,
@@ -111,6 +132,20 @@ def main():
     config.data_config.working_dir = Path(args.working_dir)
     config.segmentation_config.n_workers = args.n_threads
     config.tracking_config.n_threads = args.n_threads
+    config.linking_config.n_workers = args.n_threads
+
+    if args.min_area is not None:
+        config.segmentation_config.min_area = args.min_area
+    if args.max_area is not None:
+        config.segmentation_config.max_area = args.max_area
+    if args.max_distance is not None:
+        config.linking_config.max_distance = args.max_distance
+    if args.distance_weight is not None:
+        config.linking_config.distance_weight = args.distance_weight
+    if args.solution_gap is not None:
+        config.tracking_config.solution_gap = args.solution_gap
+    if args.time_limit is not None:
+        config.tracking_config.time_limit = args.time_limit
 
     scale = [args.scale_z, args.scale_y, args.scale_x]
 
