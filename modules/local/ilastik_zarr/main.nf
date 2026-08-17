@@ -31,7 +31,9 @@ process ILASTIK_ZARR {
     def halo_arg  = meta.halo    != null ? "--halo ${meta.halo}"       : ""
 
     def ilastik_python = "/opt/ilastik-1.4.2-Linux/bin/python3"
+
     """
+    LAZYFLOW_THREADS=${task.cpus} LAZYFLOW_TOTAL_RAM_MB=${task.memory.toMega()} \\
     ${ilastik_python} ${moduleDir}/resources/usr/bin/ilastik_tile.py \
         --input-zarr "${input_zarr}" \
         --output-zarr "${master_output_zarr}" \
