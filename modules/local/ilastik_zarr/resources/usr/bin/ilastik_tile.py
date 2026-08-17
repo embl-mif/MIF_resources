@@ -10,7 +10,6 @@ import zarr
 import vigra
 import h5py
 
-from collections import OrderedDict
 from pathlib import Path
 
 os.environ.setdefault("LAZYFLOW_THREADS", "2")
@@ -62,7 +61,7 @@ def _ilp_max_sigma(f: h5py.File) -> float:
 
 
 def inspect_ilp(project_path: str):
-    """Inspect .ilp project to extract 2D/3D mode and calculate recommended halo."""
+    """Inspect .ilp project to extract 2D/3D mode and calculate recommended halo from sigmas."""
     with h5py.File(project_path, "r") as f:
         is_2d = False
         if "FeatureSelections/ComputeIn2d" in f:
@@ -78,12 +77,6 @@ def inspect_ilp(project_path: str):
 def validate_grid_alignment(offsets, tile_shapes, zarr_array, axis_names=("t", "c", "z", "y", "x")):
     """
     Vectorized ND chunk alignment validation strictly for Zarr v2.
-
-    FIX: previously this zipped a 3-element offsets/tile_shapes against the
-    array's full 5-element chunks/shape. zip() truncates to the shortest
-    sequence, so z was validated against the t chunk, y against c, and x
-    against z -- it rejected valid tilings and passed invalid ones. Now the
-    array's chunks/shape are indexed by the axis names actually being checked.
     """
     offsets = np.asarray(offsets)
     tile_shapes = np.asarray(tile_shapes)
@@ -106,6 +99,7 @@ def validate_grid_alignment(offsets, tile_shapes, zarr_array, axis_names=("t", "
 
 
 def process_single_tile(tile_spec, in_store, out_store, shell, args, is_2d_model, halo, n_classes):
+     """Read one tile from in_store, run ilastik on it, crop off the halo, write into out_store."""
     if in_store.ndim != 5:
         raise ValueError(
             f"This worker expects a 5D (t, c, z, y, x) input array, got shape {in_store.shape}."
@@ -149,7 +143,7 @@ def process_single_tile(tile_spec, in_store, out_store, shell, args, is_2d_model
     px_min = max(0, x_min - halo)
     px_max = min(shape_x, x_max + halo)
 
-    # FIX: crop offsets are derived from the actual clipped read window rather
+    # Crop offsets are derived from the actual clipped read window rather
     # than assuming a full halo was available on the low side.
     z_crop_slice = slice(z_min - pz_min, (z_min - pz_min) + (z_max - z_min))
     y_crop_slice = slice(y_min - py_min, (y_min - py_min) + (y_max - y_min))
@@ -254,8 +248,7 @@ def _build_skeleton(input_path: str, ilp_path: str, output_path: str, dtype: str
          if (axis.get("name") if isinstance(axis, dict) else axis) == "c"),
         None
     )
-    # FIX: defaulting to index 1 on an input without a channel axis would
-    # overwrite a spatial extent with the class count.
+
     if channel_axis_index is None:
         raise ValueError(
             f"Input axes {axes} contain no 'c' axis; cannot place {num_channels} "
@@ -291,8 +284,6 @@ def _build_skeleton(input_path: str, ilp_path: str, output_path: str, dtype: str
         new_chunks = list(src_array.chunks)
         new_chunks[channel_axis_index] = num_channels
 
-        # FIX: carry over the source's dimension_separator. Without it the
-        # output uses "." while a bioformats2raw input uses "/".
         separator = getattr(src_array, "_dimension_separator", None) or "."
 
         print(f"[Prealloc] Creating scale '{path_name}': shape {src_array.shape} -> {new_shape}")
@@ -311,7 +302,12 @@ def _build_skeleton(input_path: str, ilp_path: str, output_path: str, dtype: str
 def ensure_preallocated(input_path: str, ilp_path: str, output_path: str,
                         lock_path: str, dtype: str = "float32"):
     """
-    Not sure I want to keep preallocation within the module. Feels unecessarily complicated to have to do this.
+    Build the output skeleton once, safely, even with many jobs starting at the same time.
+
+    Checks a marker file that only gets written once the skeleton is fully built, not just 
+    when the store's created). So a job that shows up mid-build waits
+    on the lock instead of grabbing a half-finished store, and a crashed build gets
+    redone next time instead of getting stuck forever.
     """
     marker_file = f"{output_path}.complete"
 
@@ -351,6 +347,7 @@ def ensure_preallocated(input_path: str, ilp_path: str, output_path: str,
 
 
 def main():
+    """cli entrypoint: preallocate the output store if needed, then run ilastik tile by tile over the given time range."""
     parser = argparse.ArgumentParser(description="Ilastik tile worker with built-in native file lock preallocation.")
     parser.add_argument("--input-zarr", required=True, help="Path to input raw Zarr store")
     parser.add_argument("--output-zarr", required=True, help="Path to output probability Zarr store")
@@ -391,7 +388,6 @@ def main():
     is_2d_model, auto_halo = inspect_ilp(args.project)
     halo = args.halo if args.halo is not None else auto_halo
 
-    # FIX: read once here instead of reopening the HDF5 project for every tile.
     n_classes = len(extract_ilp_labels(args.project))
     if out_store.shape[1] != n_classes:
         raise ValueError(
