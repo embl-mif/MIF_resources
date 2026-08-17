@@ -99,7 +99,7 @@ def validate_grid_alignment(offsets, tile_shapes, zarr_array, axis_names=("t", "
 
 
 def process_single_tile(tile_spec, in_store, out_store, shell, args, is_2d_model, halo, n_classes):
-     """Read one tile from in_store, run ilastik on it, crop off the halo, write into out_store."""
+    """Read one tile from in_store, run ilastik on it, crop off the halo, write into out_store."""
     if in_store.ndim != 5:
         raise ValueError(
             f"This worker expects a 5D (t, c, z, y, x) input array, got shape {in_store.shape}."
