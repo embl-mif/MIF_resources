@@ -11,6 +11,7 @@ process ULTRACK {
     output:
     tuple val(meta), val(output_tracked_zarr),  emit: tracked_zarr
     tuple val(meta), path(output_tracks_csv),   emit: tracks
+    tuple val(meta), path(output_graph),        emit: graph
     path "versions.yml",                        emit: versions
 
     when:
@@ -19,6 +20,7 @@ process ULTRACK {
     script:
     def args = task.ext.args ?: ''
     output_tracks_csv   = "${meta.id}_tracks.csv"
+    output_graph          = "${meta.id}_graph.npy"
     def working_dir = "${meta.id}_ultrack_db"
     def n_threads = task.cpus ?: 1
     def t_min_arg = meta.t_min != null ? "--t-min ${meta.t_min}" : ""
@@ -56,6 +58,7 @@ process ULTRACK {
         ${config_arg} \\
         --working-dir ${working_dir} \\
         --output-tracks-csv ${output_tracks_csv} \\
+        --output-graph ${output_graph} \\
         --output-segments-zarr ${output_tracked_zarr} \\
         --n-threads ${n_threads} \\
         ${min_area_arg} \\
