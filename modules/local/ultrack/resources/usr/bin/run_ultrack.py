@@ -127,6 +127,8 @@ def main():
                               "among ambiguous candidates.")
 
     parser.add_argument("--output-tracks-csv", type=str, required=True)
+    parser.add_argument("--output-graph", type=str, required=True,
+                         help=".npy path for the lineage/division graph -- maps each track id to its parent(s).")
     parser.add_argument("--output-segments-zarr", type=str, required=True,
                          help="Level-0-only OME-Zarr; rebuild the pyramid downstream via REBUILD_PYRAMID.")
     parser.add_argument("--overwrite", choices=["all", "links", "solutions", "none"], default="none")
@@ -201,6 +203,8 @@ def main():
     print("[Ultrack] Tracking complete. Exporting tracks.csv")
     tracks_df, graph = to_tracks_layer(config)
     tracks_df.to_csv(args.output_tracks_csv, index=False)
+    print(f"[Ultrack] Saving lineage graph to {args.output_graph}")
+    np.save(args.output_graph, graph, allow_pickle=True)
 
     print("[Ultrack] Writing segments skeleton (level 0 only)")
     segments = tracks_to_zarr(config, tracks_df, overwrite=True)
