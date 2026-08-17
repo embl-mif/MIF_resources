@@ -1,8 +1,0 @@
-name: preallocate_zarr_ilastik
-channels:
-  - conda-forge
-  - nodefaults
-dependencies:
-  - python==3.9
-  - zarr
-  - h5py
