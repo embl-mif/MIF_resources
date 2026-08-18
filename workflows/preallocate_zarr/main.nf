@@ -9,7 +9,8 @@ workflow {
         id: "test_dataset",
         num_channels: 3,
         channel_labels: ["background", "cells", "crystals"],
-        zarr_format: 3
+        zarr_format: 3,
+        data_type: "probability"
     ]
 
     def input_zarr  = params.input_zarr
