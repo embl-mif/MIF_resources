@@ -19,6 +19,7 @@ process PREALLOCATE_ZARR {
     def channel_labels_arg = meta.channel_labels != null ? "--channel-labels \"${meta.channel_labels.join(',')}\""   : ""
     def dtype_arg           = meta.dtype          != null ? "--dtype ${meta.dtype}"                                   : ""
     def zarr_format_arg     = meta.zarr_format     != null ? "--zarr-format ${meta.zarr_format}"                      : ""
+    def data_type_arg = meta.data_type != null ? "--data-type ${meta.data_type}" : ""
     """
     preallocate_zarr.py \\
         --input-zarr "${input_zarr}" \\
@@ -27,6 +28,7 @@ process PREALLOCATE_ZARR {
         ${channel_labels_arg} \\
         ${dtype_arg} \\
         ${zarr_format_arg} \\
+        ${data_type_arg} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml
