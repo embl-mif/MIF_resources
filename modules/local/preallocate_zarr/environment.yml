@@ -1,0 +1,8 @@
+name: preallocate_zarr
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - zarr
+  - ngio>=1.0.1
