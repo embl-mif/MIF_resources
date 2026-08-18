@@ -21,12 +21,14 @@ def _detect_input_zarr_format(root) -> int:
 
 def build_skeleton(input_path: str, output_path: str, dtype: str,
                     num_channels: int | None, channel_labels: list[str] | None,
-                    zarr_format: int | None):
+                    zarr_format: int | None, data_type: str | None):
     src_group = zarr.open(input_path, mode="r")
     zattrs = dict(src_group.attrs)
     multiscales = zattrs.get("multiscales", [])
     if not multiscales:
         raise ValueError(f"Input Zarr '{input_path}' lacks 'multiscales' metadata.")
+    if data_type is not None:
+        zattrs["data_type"] = data_type
 
     axes_meta = multiscales[0].get("axes", [])
     axis_names = tuple(
@@ -120,7 +122,10 @@ def main():
     parser.add_argument("--zarr-format", type=int, choices=[2, 3], default=None,
                          help="Output Zarr storage format. Defaults to matching the input's own "
                               "format. Set explicitly to force v2 or v3 output regardless of input.")
-
+    parser.add_argument("--data-type", type=str, default=None,
+                         choices=["intensity", "label", "probability"],
+                         help="Override the top-level 'data_type' metadata field. Omit to keep "
+                              "whatever the source image had (e.g. 'intensity').")
     args = parser.parse_args()
     channel_labels = args.channel_labels.split(",") if args.channel_labels else None
     if channel_labels and args.num_channels is None:
@@ -130,7 +135,7 @@ def main():
                      f"but --num-channels is {args.num_channels}")
 
     build_skeleton(args.input_zarr, args.output_zarr, args.dtype,
-                    args.num_channels, channel_labels, args.zarr_format)
+                    args.num_channels, channel_labels, args.zarr_format, args.data_type)
     print(f"[Prealloc] Done: {args.output_zarr}")
 
 
