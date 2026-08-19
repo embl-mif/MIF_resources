@@ -45,7 +45,7 @@ process ULTRACK {
     def scale_y_arg = meta.scale_y != null ? "--scale-y ${meta.scale_y}" : ""
     def scale_x_arg = meta.scale_x != null ? "--scale-x ${meta.scale_x}" : ""
     """
-    run_ultrack.py \\
+    ultrack.py \\
         ${labels_arg} \\
         ${foreground_arg} \\
         ${contours_arg} \\
