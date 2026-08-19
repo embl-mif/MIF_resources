@@ -1,4 +1,4 @@
-process REBUILD_PYRAMID {
+process POPULATE_PYRAMID {
     tag "$meta.id"
     label 'process_low'
     conda "${moduleDir}/environment.yml"
@@ -13,7 +13,7 @@ process REBUILD_PYRAMID {
     script:
     def n_threads = task.cpus ?: 1
     """
-    rebuild_pyramid.py \
+    populate_pyramid.py \
         --output-zarr "${output_zarr}" \
         --downsample-method ${downsample_method} \
         --n-threads ${n_threads}
