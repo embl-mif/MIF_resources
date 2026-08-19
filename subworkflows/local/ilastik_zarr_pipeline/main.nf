@@ -1,7 +1,7 @@
-include { EXTRACT_ILP_CLASSES   } from '../../../modules/local/extract_ilp_classes/main'
-include { PREALLOCATE_ZARR      } from '../../../modules/local/preallocate_zarr/main'
-include { ILASTIK_ZARR          } from '../../../modules/local/ilastik_zarr/main'
-include { POPULATE_PYRAMID      } from '../../../modules/local/populate_pyramid/main'
+include { EXTRACT_ILASTIK_CLASSES } from '../../../modules/local/extract_ilastik_classes/main'
+include { PREALLOCATE_ZARR        } from '../../../modules/local/preallocate_zarr/main'
+include { ILASTIK_ZARR            } from '../../../modules/local/ilastik_zarr/main'
+include { POPULATE_PYRAMID        } from '../../../modules/local/populate_pyramid/main'
 
 workflow ILASTIK_ZARR_PIPELINE {
 
@@ -14,10 +14,10 @@ workflow ILASTIK_ZARR_PIPELINE {
     main:
     ch_versions = Channel.empty()
 
-    EXTRACT_ILP_CLASSES(ch_project)
-    ch_versions = ch_versions.mix(EXTRACT_ILP_CLASSES.out.versions)
+    EXTRACT_ILASTIK_CLASSES(ch_project)
+    ch_versions = ch_versions.mix(EXTRACT_ILASTIK_CLASSES.out.versions)
 
-    ch_channel_info = EXTRACT_ILP_CLASSES.out.classes
+    ch_channel_info = EXTRACT_ILASTIK_CLASSES.out.classes
         .map { json -> new groovy.json.JsonSlurper().parseText(json.text) }
 
     ch_prealloc_input = ilastik_input_ch
