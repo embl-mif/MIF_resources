@@ -1,5 +1,12 @@
 process ILASTIK_ZARR {
-    tag "${meta.id}_z${meta.z_min}_y${meta.y_min}"
+    tag {
+    def parts = [meta.id]
+    if (meta.t_min != null) parts << "t${meta.t_min}"
+    if (meta.y_min != null) parts << "y${meta.y_min}"
+    if (meta.x_min != null) parts << "x${meta.x_min}"
+    parts.join("_")
+    }
+
     label 'process_medium'
 
     container "docker.io/biocontainers/ilastik:1.4.2_cv1"
@@ -9,7 +16,7 @@ process ILASTIK_ZARR {
     path  project
 
     output:
-    tuple val(meta), val(master_output_zarr), emit: zarr
+    tuple val(meta), val(master_output_zarr),  emit: zarr
     path "versions.yml"                      , emit: versions
 
     when:
@@ -34,7 +41,7 @@ process ILASTIK_ZARR {
 
     """
     LAZYFLOW_THREADS=${task.cpus} LAZYFLOW_TOTAL_RAM_MB=${task.memory.toMega()} \\
-    ${ilastik_python} ${moduleDir}/resources/usr/bin/ilastik_tile.py \
+    ${ilastik_python} ${moduleDir}/resources/usr/bin/ilastik_zarr.py \
         --input-zarr "${input_zarr}" \
         --output-zarr "${master_output_zarr}" \
         --project "${project}" \
