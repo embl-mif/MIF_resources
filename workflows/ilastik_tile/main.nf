@@ -4,8 +4,7 @@ nextflow.enable.dsl = 2
 
 include { TILECONSTRUCTOR_INPUT_PREP    } from '../../modules/local/tileconstructor_input_prep/main'
 include { TILE_CONSTRUCTOR              } from '../../modules/local/tileconstructor/main'
-include { ILASTIK_ZARR }                  from '../../modules/local/ilastik_zarr/main'
-include { REBUILD_PYRAMID               } from '../../modules/local/rebuild_pyramid/main'
+include { ILASTIK_ZARR_PIPELINE         } from '../../subworkflows/local/ilastik_zarr_pipeline/main'
 
 workflow {
     def pubdir = "${file(params.outdir)}/probabilities"
@@ -37,13 +36,10 @@ workflow {
             return [ meta, image ]
         }
 
-    // Wrap ilastik project file in a value channel so it can be reused by all parallel tasks
-    ch_project = Channel.value(file(params.ilastik_project))
-
     TILE_CONSTRUCTOR(input_ch)
 
     ch_ilastik_inputs = TILE_CONSTRUCTOR.out.tiles
-        .join(input_ch)   // -> [ meta, tiles_csv, raw_zarr ]
+        .join(input_ch)
         .flatMap { meta, tiles_csv, raw_zarr ->
             def output_zarr = "${pubdir}/${meta.id}_probabilities.zarr"
 
@@ -60,13 +56,8 @@ workflow {
                 return [ tile_meta, raw_zarr, output_zarr ]
             }
         }
+    ch_project = Channel.value(file(params.ilastik_project))
 
-    ILASTIK_ZARR(ch_ilastik_inputs, ch_project)
-
-    ch_ready_for_pyramid = ILASTIK_ZARR.out.zarr
-        .map { meta, output_zarr -> tuple(meta.id, meta, output_zarr) }
-        .groupTuple(by: 0)
-        .map { id, metas, zarrs -> tuple(metas[0], zarrs[0], "Average") } // downsample method = average if using prob
-
-    REBUILD_PYRAMID(ch_ready_for_pyramid)
+    ILASTIK_ZARR_PIPELINE(ch_ilastik_inputs, ch_project)
+    ILASTIK_ZARR_PIPELINE.out.probabilities.view()
 }
