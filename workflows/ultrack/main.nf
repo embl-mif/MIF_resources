@@ -2,8 +2,9 @@
 
 nextflow.enable.dsl = 2
 
-include { ULTRACK   } from '../../modules/local/ultrack/main'
-include { REBUILD_PYRAMID } from '../../modules/local/rebuild_pyramid/main'
+include { PREALLOCATE_ZARR } from '../../modules/local/preallocate_zarr/main'
+include { RUN_ULTRACK          } from '../../modules/local/run_ultrack/main'
+include { POPULATE_PYRAMID } from '../../modules/local/populate_pyramid/main'
 
 workflow {
     def pubdir = "${file(params.outdir)}/tracking"
@@ -12,6 +13,14 @@ workflow {
     def prob_zarr = params.probabilities_zarr   // absolute path string
     def raw_image = params.input_zarr
     def output_tracked_zarr = "${pubdir}/${meta.id}_tracked.zarr"
+
+    def prealloc_meta = meta.clone()
+    prealloc_meta.num_channels = 1
+    prealloc_meta.dtype        = "int32"
+    prealloc_meta.data_type    = "label"
+
+    ch_prealloc_input = Channel.of([ prealloc_meta, raw_image, output_tracked_zarr ])
+    PREALLOCATE_ZARR(ch_prealloc_input)
 
     def ultrack_meta = meta.clone()
     ultrack_meta.foreground_channel = 1   // "cells"
@@ -24,12 +33,14 @@ workflow {
     ultrack_meta.max_distance   = 10.0
     ultrack_meta.solution_gap   = 0.1
     ultrack_meta.time_limit     = 600
-    ch_ultrack = Channel.of([ ultrack_meta, null, prob_zarr, null, raw_image, output_tracked_zarr ])
+
+    ch_ultrack = PREALLOCATE_ZARR.out.empty_zarr
+        .map { m, prealloc_zarr -> tuple(ultrack_meta, null, prob_zarr, null, raw_image, prealloc_zarr) }
     ch_config_toml = params.ultrack_config ? file(params.ultrack_config) : []
 
-    ULTRACK(ch_ultrack, ch_config_toml)
+    RUN_ULTRACK(ch_ultrack, ch_config_toml)
     ch_ready_for_pyramid = ULTRACK.out.tracked_zarr
         .map { m, output_zarr -> tuple(m, output_zarr, "Sample") } // downsample methos = sample for int
 
-    REBUILD_PYRAMID(ch_ready_for_pyramid)
+    POPULATE_PYRAMID(ch_ready_for_pyramid)
 }
