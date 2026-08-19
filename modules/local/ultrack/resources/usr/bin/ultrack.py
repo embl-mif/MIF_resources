@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Ultrack cell tracking wrapper, zarr v2 only compatible: consumes either an ilastik probability
 store (foreground+contours) or Cellpose/SAM instance labels, tracks the
-full timelapse in one job, and writes tracks.csv + a segments OME-Zarr
-skeleton (level 0 only).
+full timelapse in one job, and writes tracks.csv + a lineage graph. Writes
+segments directly into an already-preallocated OME-Zarr level 0 (see
+PREALLOCATE_ZARR / POPULATE_PYRAMID modules).
 API reference: https://royerlab.github.io/ultrack/api.html
 """
 import sys
@@ -17,47 +18,11 @@ import zarr
 from ultrack import MainConfig, load_config, track, to_tracks_layer, tracks_to_zarr
 from ultrack.imgproc import robust_invert
 
+
 def _open_array(path: str, level: str = "0"):
     root = zarr.open(path, mode="r")
     return root[level] if isinstance(root, zarr.hierarchy.Group) and level in root else root
 
-def _write_segments_skeleton(segments: np.ndarray, output_path: str, scale_zyx):
-    """Write ultrack's raw label array as OME-Zarr level 0 only, using plain
-    zarr -- REBUILD_PYRAMID (squirrel) fills in the
-    remaining levels downstream."""
-    ndim = segments.ndim
-    if ndim == 3:
-        segments = segments.reshape(segments.shape[0], 1, 1, *segments.shape[1:])
-    elif ndim == 4:
-        segments = segments.reshape(segments.shape[0], 1, *segments.shape[1:])
-    else:
-        raise ValueError(f"Unexpected segments array ndim={ndim}, shape={segments.shape}")
-
-    root = zarr.group(store=zarr.DirectoryStore(output_path), overwrite=True)
-
-    axes = [
-        {"name": "t", "type": "time", "unit": "second"},
-        {"name": "c", "type": "channel"},
-        {"name": "z", "type": "space", "unit": "micrometer"},
-        {"name": "y", "type": "space", "unit": "micrometer"},
-        {"name": "x", "type": "space", "unit": "micrometer"},
-    ]
-    scale = [1.0, 1.0] + list(scale_zyx)
-    root.attrs["multiscales"] = [{
-        "version": "0.4",
-        "name": "segments",
-        "axes": axes,
-        "datasets": [{"path": "0", "coordinateTransformations": [{"type": "scale", "scale": scale}]}],
-        "type": "labels",
-    }]
-
-    chunks = (1, 1, min(64, segments.shape[2]), min(256, segments.shape[3]), min(256, segments.shape[4]))
-    arr = root.create_dataset(
-        "0", shape=segments.shape, chunks=chunks, dtype=segments.dtype,
-        compressor=None, fill_value=0, dimension_separator="/",
-    )
-    arr[:] = segments
-    return output_path
 
 def _squeeze_singleton_z(arr: np.ndarray) -> np.ndarray:
     """If arr is (T, Z, Y, X) with Z==1, squeeze to (T, Y, X). Leaves
@@ -65,6 +30,7 @@ def _squeeze_singleton_z(arr: np.ndarray) -> np.ndarray:
     if arr.ndim == 4 and arr.shape[1] == 1:
         return arr.squeeze(axis=1)
     return arr
+
 
 def _load_time_sliced(path: str, channel: int, t_min: int, t_max: int):
     """Open a zarr array, select a channel, and slice to [t_min, t_max), only the requested timepoints are read
@@ -78,6 +44,33 @@ def _load_time_sliced(path: str, channel: int, t_min: int, t_max: int):
     if not (0 <= t_start < t_end <= shape_t):
         raise ValueError(f"Bad t range [{t_start}, {t_end}) for extent {shape_t}.")
     return np.asarray(arr[t_start:t_end])
+
+
+def _write_segments_to_preallocated(segments: np.ndarray, output_path: str):
+    """Write ultrack's raw label array into level 0 of an already-preallocated
+    OME-Zarr store (see PREALLOCATE_ZARR). Reshapes to 5D tczyx to match the
+    store's convention, then writes the whole array in one shot."""
+    ndim = segments.ndim
+    if ndim == 3:
+        segments = segments.reshape(segments.shape[0], 1, 1, *segments.shape[1:])
+    elif ndim == 4:
+        segments = segments.reshape(segments.shape[0], 1, *segments.shape[1:])
+    else:
+        raise ValueError(f"Unexpected segments array ndim={ndim}, shape={segments.shape}")
+
+    out_root = zarr.open(output_path, mode="r+")
+    out_store = out_root["0"] if isinstance(out_root, zarr.hierarchy.Group) and "0" in out_root else out_root
+
+    if out_store.shape != segments.shape:
+        raise ValueError(
+            f"Preallocated store has shape {out_store.shape}, but ultrack produced "
+            f"segments of shape {segments.shape}. Was PREALLOCATE_ZARR run with the "
+            f"wrong num_channels or dimensions?"
+        )
+
+    out_store[:] = segments
+    return output_path
+
 
 def main():
     parser = argparse.ArgumentParser(description="Run ultrack cell tracking on a timelapse.")
@@ -104,18 +97,12 @@ def main():
     parser.add_argument("--scale-z", type=float, default=1.0)
     parser.add_argument("--scale-y", type=float, default=1.0)
     parser.add_argument("--scale-x", type=float, default=1.0)
-    # Segmentation tuning
     parser.add_argument("--min-area", type=int, default=None,
                          help="Minimum segment/cell area (pixels). Discards segments smaller than this.")
     parser.add_argument("--max-area", type=int, default=None,
                          help="Maximum segment/cell area (pixels). Discards segments larger than this.")
-
-    # Linking tuning, how far (in scaled units) a cell may move between
-    # consecutive frames to be considered a candidate link.
     parser.add_argument("--max-distance", type=float, default=None,
                          help="Maximum linking distance between consecutive frames (same units as --scale-*).")
-
-    # Solve tuning -- trade optimality for speed/memory on the ILP solve.
     parser.add_argument("--solution-gap", type=float, default=None,
                          help="ILP solver optimality gap (larger = faster/less memory, less optimal).")
     parser.add_argument("--time-limit", type=int, default=None,
@@ -130,7 +117,7 @@ def main():
     parser.add_argument("--output-graph", type=str, required=True,
                          help=".npy path for the lineage/division graph -- maps each track id to its parent(s).")
     parser.add_argument("--output-segments-zarr", type=str, required=True,
-                         help="Level-0-only OME-Zarr; rebuild the pyramid downstream via REBUILD_PYRAMID.")
+                         help="Path to the segments OME-Zarr store. Must already exist -- see PREALLOCATE_ZARR.")
     parser.add_argument("--overwrite", choices=["all", "links", "solutions", "none"], default="none")
 
     args = parser.parse_args()
@@ -145,7 +132,6 @@ def main():
             parser.error("--contours-zarr and --derive-contours-from-raw are mutually exclusive.")
         if not args.contours_zarr and not args.derive_contours_from_raw:
             parser.error("Provide either --contours-zarr or --derive-contours-from-raw alongside --foreground-zarr.")
-
 
     config = load_config(args.config_toml) if args.config_toml else MainConfig()
     config.data_config.working_dir = Path(args.working_dir)
@@ -206,9 +192,9 @@ def main():
     print(f"[Ultrack] Saving lineage graph to {args.output_graph}")
     np.save(args.output_graph, graph, allow_pickle=True)
 
-    print("[Ultrack] Writing segments skeleton (level 0 only)")
+    print("[Ultrack] Writing segments into preallocated store")
     segments = tracks_to_zarr(config, tracks_df, overwrite=True)
-    _write_segments_skeleton(np.asarray(segments), args.output_segments_zarr, scale)
+    _write_segments_to_preallocated(np.asarray(segments), args.output_segments_zarr)
 
     print(f"[Ultrack] Done. Tracks: {args.output_tracks_csv}, Segments: {args.output_segments_zarr}")
 
