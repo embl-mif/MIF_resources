@@ -17,9 +17,11 @@ process PREALLOCATE_ZARR {
     def args = task.ext.args ?: ''
     def num_channels_arg   = meta.num_channels   != null ? "--num-channels ${meta.num_channels}"                     : ""
     def channel_labels_arg = meta.channel_labels != null ? "--channel-labels \"${meta.channel_labels.join(',')}\""   : ""
-    def dtype_arg           = meta.dtype          != null ? "--dtype ${meta.dtype}"                                   : ""
-    def zarr_format_arg     = meta.zarr_format     != null ? "--zarr-format ${meta.zarr_format}"                      : ""
-    def data_type_arg = meta.data_type != null ? "--data-type ${meta.data_type}" : ""
+    def dtype_arg          = meta.dtype          != null ? "--dtype ${meta.dtype}"                                   : ""
+    def zarr_format_arg    = meta.zarr_format    != null ? "--zarr-format ${meta.zarr_format}"                      : ""
+    def data_type_arg      = meta.data_type      != null ? "--data-type ${meta.data_type}" : ""
+    def t_min_arg          = meta.t_min          != null ? "--t-min ${meta.t_min}" : ""
+    def t_max_arg          = meta.t_max          != null ? "--t-max ${meta.t_max}" : ""
     """
     preallocate_zarr.py \\
         --input-zarr "${input_zarr}" \\
@@ -29,6 +31,8 @@ process PREALLOCATE_ZARR {
         ${dtype_arg} \\
         ${zarr_format_arg} \\
         ${data_type_arg} \\
+        ${t_min_arg} \\
+        ${t_max_arg} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml
