@@ -21,7 +21,8 @@ def _detect_input_zarr_format(root) -> int:
 
 def build_skeleton(input_path: str, output_path: str, dtype: str,
                     num_channels: int | None, channel_labels: list[str] | None,
-                    zarr_format: int | None, data_type: str | None):
+                    zarr_format: int | None, data_type: str | None,
+                    t_min: int | None, t_max: int | None):
     src_group = zarr.open(input_path, mode="r")
     zattrs = dict(src_group.attrs)
     multiscales = zattrs.get("multiscales", [])
@@ -35,11 +36,16 @@ def build_skeleton(input_path: str, output_path: str, dtype: str,
         (axis.get("name") if isinstance(axis, dict) else axis) for axis in axes_meta
     )
     channel_axis_index = axis_names.index("c") if "c" in axis_names else None
+    t_axis_index = axis_names.index("t") if "t" in axis_names else None
 
     if num_channels is not None and channel_axis_index is None:
         raise ValueError(
             f"Input axes {axis_names} contain no 'c' axis; cannot place {num_channels} "
             "output channels."
+        )
+    if (t_min is not None or t_max is not None) and t_axis_index is None:
+        raise ValueError(
+            f"Input axes {axis_names} contain no 't' axis; cannot apply --t-min/--t-max."
         )
 
     # Default: output format matches the input's own storage format, unless
@@ -50,6 +56,16 @@ def build_skeleton(input_path: str, output_path: str, dtype: str,
     datasets = multiscales[0]["datasets"]
     level_paths = [ds["path"] for ds in datasets]
 
+    if t_axis_index is not None:
+        base_shape_t = src_group[level_paths[0]].shape[t_axis_index]
+        t_start = t_min if t_min is not None else 0
+        t_end = t_max if t_max is not None else base_shape_t
+        if not (0 <= t_start < t_end <= base_shape_t):
+            raise ValueError(f"Bad t range [{t_start}, {t_end}) for extent {base_shape_t}.")
+        print(f"[Prealloc] Restricting t axis to [{t_start}, {t_end}) of {base_shape_t}")
+        # Storing info on time range in this way for now
+        zattrs["t_range"] = [t_start, t_end]
+
     shapes = []
     scales = []
     for ds in datasets:
@@ -58,12 +74,17 @@ def build_skeleton(input_path: str, output_path: str, dtype: str,
         # Only remap the channel axis if --num-channels was explicitly given.
         if num_channels is not None:
             shape[channel_axis_index] = num_channels
+        # Only restrict the t axis if --t-min/--t-max was explicitly given.
+        if t_axis_index is not None and (t_min is not None or t_max is not None):
+            shape[t_axis_index] = t_end - t_start
         shapes.append(tuple(shape))
         scales.append(tuple(ds["coordinateTransformations"][0]["scale"]))
 
     base_chunks = list(src_group[level_paths[0]].chunks)
     if num_channels is not None:
         base_chunks[channel_axis_index] = num_channels
+    if t_axis_index is not None:
+        base_chunks[t_axis_index] = min(base_chunks[t_axis_index], shapes[0][t_axis_index])
 
     builder = ImagePyramidBuilder.from_shapes(
         shapes=shapes,
@@ -126,6 +147,11 @@ def main():
                          choices=["intensity", "label", "probability"],
                          help="Override the top-level 'data_type' metadata field. Omit to keep "
                               "whatever the source image had (e.g. 'intensity').")
+    parser.add_argument("--t-min", type=int, default=None,
+                         help="First timepoint index to include (inclusive). Defaults to 0.")
+    parser.add_argument("--t-max", type=int, default=None,
+                         help="Last timepoint index to include (exclusive). Defaults to the "
+                              "input's full time extent.")
     args = parser.parse_args()
     channel_labels = args.channel_labels.split(",") if args.channel_labels else None
     if channel_labels and args.num_channels is None:
@@ -135,7 +161,8 @@ def main():
                      f"but --num-channels is {args.num_channels}")
 
     build_skeleton(args.input_zarr, args.output_zarr, args.dtype,
-                    args.num_channels, channel_labels, args.zarr_format, args.data_type)
+                    args.num_channels, channel_labels, args.zarr_format, args.data_type,
+                    args.t_min, args.t_max)
     print(f"[Prealloc] Done: {args.output_zarr}")
 
 
