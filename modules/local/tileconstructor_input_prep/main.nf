@@ -16,7 +16,7 @@ process TILECONSTRUCTOR_INPUT_PREP {
 
     script:
     def args = task.ext.args ?: ''
-    script:
+
     """
     tileconstructor_config.py \
         --input-dir ${input_dir} \
