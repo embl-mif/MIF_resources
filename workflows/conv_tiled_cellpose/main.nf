@@ -18,9 +18,7 @@ workflow {
         .map { row ->
             def input_dataset = file(row.input, checkIfExists: true)
 
-            def resolved_output = file(row.output).isAbsolute()
-                ? row.output
-                : "${zarr_dir}/${row.output}"
+            def resolved_output =  "${zarr_dir}/${file(row.output).name}"
 
             def meta = [id: input_dataset.simpleName ]
 
