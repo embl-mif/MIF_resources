@@ -65,17 +65,17 @@ process CELLPOSE_SAM_ZARR {
     script:
     def output_zarr = "${meta.id}_labels.ome.zarr"
 
-    def x_min_arg = Utils.optionalCliArg("--x-min", meta.x_min)
-    def x_max_arg = Utils.optionalCliArg("--x-max", meta.x_max)
-    def y_min_arg = Utils.optionalCliArg("--y-min", meta.y_min)
-    def y_max_arg = Utils.optionalCliArg("--y-max", meta.y_max)
-    def z_min_arg = Utils.optionalCliArg("--z-min", meta.z_min)
-    def z_max_arg = Utils.optionalCliArg("--z-max", meta.z_max)
-    def channels_arg = Utils.optionalCliArg("--segmentation_channels", meta.segmentation_channels)
-    def halo_arg = Utils.optionalCliArg("--halo", meta.halo)
-    def resolution_level_arg = Utils.optionalCliArg("--resolution-level", meta.resolution_level)
+    def output_zarr = "${meta.id}_labels.ome.zarr"
+    def x_min_arg = meta.x_min != null ? "--x-min ${meta.x_min}" : ""
+    def x_max_arg = meta.x_max != null ? "--x-max ${meta.x_max}" : ""
+    def y_min_arg = meta.y_min != null ? "--y-min ${meta.y_min}" : ""
+    def y_max_arg = meta.y_max != null ? "--y-max ${meta.y_max}" : ""
+    def z_min_arg = meta.z_min != null ? "--z-min ${meta.z_min}" : ""
+    def z_max_arg = meta.z_max != null ? "--z-max ${meta.z_max}" : ""
+    def channels_arg = meta.segmentation_channels != null ? "--segmentation_channels ${meta.segmentation_channels}" : ""
+    def halo_arg = meta.halo != null ? "--halo ${meta.halo}" : ""
+    def resolution_level_arg = meta.resolution_level != null ? "--resolution-level ${meta.resolution_level}" : ""
     def use_physical_units_arg = meta.use_physical_units ? "--use-physical-units" : ""
-
     """
     cellpose_sam_zarr.py \
         --input_zarr "${image}" \
