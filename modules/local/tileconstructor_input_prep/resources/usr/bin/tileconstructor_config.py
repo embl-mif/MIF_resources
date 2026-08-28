@@ -12,11 +12,13 @@ def get_zarr_metadata(zarr_path, target_level):
         with open(os.path.join(zarr_path, "zarr.json"), "r") as f:
             root_meta = json.load(f)
             
-        datasets = root_meta.get("multiscales", [{}])[0].get("datasets", [])
+        attrs = root_meta.get("attributes", {})
+        ome_meta = attrs.get("ome", attrs)  # fall back to attrs itself if "ome" key absent (older/other v3 producers)
+        datasets = ome_meta.get("multiscales", [{}])[0].get("datasets", [])
         level_path = next((ds.get("path") for ds in datasets if str(ds.get("path")) == str(target_level)), None)
         if level_path is None:
-            raise ValueError(f"Resolution level {target_level} not found in {zarr_path}")
-            
+            raise ValueError(f"Resolution level {target_level} not found in {zarr_path}")            
+
         level_json_path = os.path.join(zarr_path, str(level_path), "zarr.json")
         with open(level_json_path, "r") as f:
             level_meta = json.load(f)
