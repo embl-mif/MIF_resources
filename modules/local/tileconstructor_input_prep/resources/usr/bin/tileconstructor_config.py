@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import json
 import csv
@@ -41,6 +42,7 @@ def scan_directory_for_ome_zarr(root_directory, target_level=0):
     if not os.path.exists(root_directory):
         raise NotADirectoryError(f"Directory not found: {root_directory}")
 
+    root_directory = os.path.abspath(root_directory)
     for entry in os.listdir(root_directory):
         full_path = os.path.join(root_directory, entry)
         if os.path.isdir(full_path) and entry.endswith(".zarr"):

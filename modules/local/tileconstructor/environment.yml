@@ -3,7 +3,9 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  - python=3.10
-  - ngff-zarr
+  - python=3.11
   - tifffile
   - imagecodecs
+  - pip
+  - pip:
+      -  "ngff-zarr[all]"
