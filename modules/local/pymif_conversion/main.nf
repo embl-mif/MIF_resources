@@ -80,6 +80,7 @@ process PYMIF_CONVERSION {
     def command = commandParts.join(' ')
 
     """
+    mkdir -p \$(dirname ${shellQuote(row.output_name)})
     ${command} ${args}
 
     cat <<-END_VERSIONS > versions.yml
