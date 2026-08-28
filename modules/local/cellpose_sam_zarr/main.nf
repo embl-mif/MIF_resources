@@ -77,7 +77,7 @@ process CELLPOSE_SAM_ZARR {
     def use_physical_units_arg = meta.use_physical_units ? "--use-physical-units" : ""
 
     """
-    python ${workflow.projectDir}/bin/cellpose_sam_zarr.py \
+    cellpose_sam_zarr.py \
         --input_zarr "${image}" \
         --output_zarr ${output_zarr} \
         ${channels_arg} \
