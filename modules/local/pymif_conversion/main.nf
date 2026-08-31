@@ -80,8 +80,12 @@ process PYMIF_CONVERSION {
     def command = commandParts.join(' ')
 
     """
-    mkdir -p \$(dirname ${shellQuote(row.output_name)})
-    ${command} ${args}
+    if [ -d ${shellQuote(row.output_name)} ] && [ -e ${shellQuote(row.output_name)}/zarr.json -o -e ${shellQuote(row.output_name)}/.zgroup ]; then
+        echo "Output already exists, skipping conversion: ${row.output_name}"
+    else
+        mkdir -p \$(dirname ${shellQuote(row.output_name)})
+        ${command} ${args}
+    fi
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -90,10 +94,8 @@ process PYMIF_CONVERSION {
     """
 
     stub:
-    def prefix = task.ext.prefix ?: "${meta.id}"
     """
-    mkdir -p "${prefix}.zarr"
-
+    mkdir -p "${row.output_name}"
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         pymif: "stub"
