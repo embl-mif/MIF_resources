@@ -1,5 +1,6 @@
 process CELLPOSE_SAM_ZARR {
     tag "$meta.id"
+    label "process_high"
     label "gpu"
 
     // Catch GPU OOM errors
