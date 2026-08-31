@@ -65,7 +65,6 @@ process CELLPOSE_SAM_ZARR {
     script:
     def output_zarr = "${meta.id}_labels.ome.zarr"
 
-    def output_zarr = "${meta.id}_labels.ome.zarr"
     def x_min_arg = meta.x_min != null ? "--x-min ${meta.x_min}" : ""
     def x_max_arg = meta.x_max != null ? "--x-max ${meta.x_max}" : ""
     def y_min_arg = meta.y_min != null ? "--y-min ${meta.y_min}" : ""
