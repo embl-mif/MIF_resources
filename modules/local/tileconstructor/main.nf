@@ -1,8 +1,9 @@
 process TILE_CONSTRUCTOR {
     tag "$meta.id"
-    label 'process_medium'
+    label 'process_low'
 
-    conda "${moduleDir}/environment.yml" 
+    //conda "${moduleDir}/environment.yml" 
+    container "docker://registry.git.embl.org/grp-cba/containers/zarr_tools:0.34.0"
 
     input:
     tuple val(meta), val(image)
