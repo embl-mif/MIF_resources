@@ -27,11 +27,17 @@ workflow {
             def resolved_zarr_output =
                 "${zarr_dir}/${file(row.output).name}"
             
-            def resolved_mip_output = "${zarr_dir}/${file(row.mip_output).name}"
-                ?: "${zarr_dir}/${dataset_id}_mip.ome.zarr"
+            def labels_mip_value = row.mip_output?.toString()?.trim()
+            def labels_mip_name = labels_mip_value
+                ? file(labels_mip_value).name
+                : "${dataset_id}_mip.ome.zarr"
+            def resolved_mip_output = "${zarr_dir}/${labels_mip_name}"
 
-            def resolved_labels_output = "${zarr_dir}/${file(row.labels_output).name}"
-                ?: "${zarr_dir}/${dataset_id}_labels.ome.zarr"
+            def labels_output_value = row.labels_output?.toString()?.trim()
+            def labels_output_name = labels_output_value
+                ? file(labels_output_value).name
+                : "${dataset_id}_labels.ome.zarr"
+            def resolved_labels_output = "${zarr_dir}/${labels_output_name}"
 
             def meta = row + [
                 id                       : dataset_id,
