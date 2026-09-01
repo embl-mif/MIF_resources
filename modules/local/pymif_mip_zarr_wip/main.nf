@@ -7,8 +7,8 @@ process PYMIF_MIP_ZARR_WIP {
     tuple val(meta), path(input_zarr)
 
     output:
-    tuple val(meta), val(mip_output_name), emit: zarr
-    path "versions.yml"                  , emit: versions
+    tuple val(meta), val(meta.mip_output_name), emit: zarr
+    path "versions.yml"                       , emit: versions
 
     script:
     """
