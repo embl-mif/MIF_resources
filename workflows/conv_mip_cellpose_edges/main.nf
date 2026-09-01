@@ -30,13 +30,17 @@ workflow {
             def resolved_mip_output = "${zarr_dir}/${file(row.mip_output).name}"
                 ?: "${zarr_dir}/${dataset_id}_mip.ome.zarr"
 
+            def resolved_labels_output = "${zarr_dir}/${file(row.labels_output).name}"
+                ?: "${zarr_dir}/${dataset_id}_labels.ome.zarr"
+
             def meta = row + [
-                id      : dataset_id,
-                zarr_output_name : resolved_zarr_output,
-                mip_output_name  : resolved_mip_output,
-                diameter         : diameter_value ? diameter_value as int : null,
-                niter            : niter_value ? niter_value as int : null,
-                segmentation_channels : cellpose_channels ?: null
+                id                       : dataset_id,
+                zarr_output_name         : resolved_zarr_output,
+                mip_output_name          : resolved_mip_output,
+                labels_output_name       : resolved_labels_output,
+                diameter                 : diameter_value ? diameter_value as int : null,
+                niter                    : niter_value ? niter_value as int : null,
+                segmentation_channels    : cellpose_channels ?: null
             ]
 
             tuple(meta, input_dataset)
