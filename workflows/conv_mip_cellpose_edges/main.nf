@@ -54,9 +54,9 @@ workflow {
      * Expected output:
      * tuple(meta, mip_zarr)
      */
-    MIP_ZARR_WIP(PYMIF_CONVERSION_WIP.out.zarr)
+    PYMIF_MIP_ZARR_WIP(PYMIF_CONVERSION_WIP.out.zarr)
 
-    CELLPOSE_SAM_ZARR_WIP(MIP_ZARR_WIP.out.zarr)
+    CELLPOSE_SAM_ZARR_WIP(PYMIF_MIP_ZARR_WIP.out.zarr)
 
 }
 
