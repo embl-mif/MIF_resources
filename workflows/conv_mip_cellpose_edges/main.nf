@@ -20,8 +20,6 @@ workflow {
             def dataset_id = row.dataset_id?.toString()?.trim()
                 ?: input_dataset.simpleName
 
-            def mip_output_value = row.mip_output?.toString()?.trim()
-
             def diameter_value = row.cellpose_diameter?.toString()?.trim()
             def niter_value = row.cellpose_niter?.toString()?.trim()
             def cellpose_channels = row.cellpose_channels?.toString()?.trim()
@@ -29,7 +27,7 @@ workflow {
             def resolved_zarr_output =
                 "${zarr_dir}/${file(row.output).name}"
             
-            def resolved_mip_output = mip_output_value
+            def resolved_mip_output = "${zarr_dir}/${file(row.mip_output).name}"
                 ?: "${zarr_dir}/${dataset_id}_mip.ome.zarr"
 
             def meta = row + [
