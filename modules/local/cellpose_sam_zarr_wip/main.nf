@@ -1,5 +1,6 @@
 process CELLPOSE_SAM_ZARR_WIP {
     tag "$meta.id"
+    label "process_high"
     label "gpu"
 
     // Catch GPU OOM errors
@@ -60,11 +61,9 @@ process CELLPOSE_SAM_ZARR_WIP {
     tuple val(meta), path(image)
 
     output:
-    tuple val(meta), path("*.ome.zarr"), emit: labels
+    tuple val(meta), val(meta.labels_output_name), emit: labels
 
     script:
-    def output_zarr = "${meta.id}_labels.ome.zarr"
-
     def x_min_arg = meta.x_min != null ? "--x-min ${meta.x_min}" : ""
     def x_max_arg = meta.x_max != null ? "--x-max ${meta.x_max}" : ""
     def y_min_arg = meta.y_min != null ? "--y-min ${meta.y_min}" : ""
@@ -80,7 +79,7 @@ process CELLPOSE_SAM_ZARR_WIP {
     """
     cellpose_sam_zarr.py \
         --input_zarr "${image}" \
-        --output_zarr ${output_zarr} \
+        --output_zarr ${meta.labels_output_name} \
         ${channels_arg} \
         ${x_min_arg} \
         ${x_max_arg} \
@@ -96,10 +95,9 @@ process CELLPOSE_SAM_ZARR_WIP {
     """
 
     stub:
-    def output_zarr = "${meta.id}_labels.ome.zarr"
     """
-    mkdir -p ${output_zarr}
-    touch ${output_zarr}/.zgroup
+    mkdir -p ${meta.labels_output_name}
+    touch ${meta.labels_output_name}/.zgroup
     """
 
 }
