@@ -45,7 +45,7 @@ workflow {
             tuple(meta, input_dataset)
         }
 
-    PYMIF_CONVERSION(pymif_inputs_ch)
+    PYMIF_CONVERSION_WIP(pymif_inputs_ch)
 
     /*
      * Creates a multiscale 2D OME-Zarr by applying max() over Z at every
@@ -54,9 +54,9 @@ workflow {
      * Expected output:
      * tuple(meta, mip_zarr)
      */
-    MIP_ZARR(PYMIF_CONVERSION.out.zarr)
+    MIP_ZARR_WIP(PYMIF_CONVERSION_WIP.out.zarr)
 
-    CELLPOSE_SAM_ZARR_WIP(MIP_ZARR.out.zarr)
+    CELLPOSE_SAM_ZARR_WIP(MIP_ZARR_WIP.out.zarr)
 
 }
 
