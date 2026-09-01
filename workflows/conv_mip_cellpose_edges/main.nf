@@ -39,7 +39,7 @@ workflow {
                 mip_output_name  : resolved_mip_output,
                 diameter         : diameter_value ? diameter_value as int : null,
                 niter            : niter_value ? niter_value as int : null,
-                segmentation_channels : cellpose_channels ? cellpose_channels.split(',').collect { it as int } : null
+                segmentation_channels : cellpose_channels ?: null
             ]
 
             tuple(meta, input_dataset)
