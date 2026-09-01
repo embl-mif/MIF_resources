@@ -704,7 +704,7 @@ def cellpose_zarr(
     print(f"OME-Zarr chunking: {chunks_spec}")
     print(f"OME-Zarr downsampling method: {to_multiscales_kwargs['method']}")
 
-    nz.to_ngff_zarr(output_zarr, label_multiscales, version=version)
+    nz.to_ngff_zarr(output_zarr, label_multiscales, version=version, type="labels")
 
     
 if __name__ == "__main__":
