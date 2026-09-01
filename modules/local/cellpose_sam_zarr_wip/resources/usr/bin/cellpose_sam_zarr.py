@@ -704,7 +704,27 @@ def cellpose_zarr(
     print(f"OME-Zarr chunking: {chunks_spec}")
     print(f"OME-Zarr downsampling method: {to_multiscales_kwargs['method']}")
 
-    nz.to_ngff_zarr(output_zarr, label_multiscales, version=version, type="labels")
+    nz.to_ngff_zarr(output_zarr, label_multiscales, version=version)
+
+    # Cellpose instance IDs must be an integer dtype.
+    label_root = zarr.open_group(output_zarr, mode="a")
+
+    image_label_metadata = {
+        "version": "0.4",
+        "colors": [
+            {
+                "label-value": 0,
+                "rgba": [0, 0, 0, 0],  # transparent background
+            }
+        ],
+    }
+
+    if version == "0.5":
+        ome = dict(label_root.attrs.get("ome", {}))
+        ome["image-label"] = image_label_metadata
+        label_root.attrs["ome"] = ome
+    else:
+        label_root.attrs["image-label"] = image_label_metadata
 
     
 if __name__ == "__main__":
