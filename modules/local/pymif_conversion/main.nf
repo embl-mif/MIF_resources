@@ -4,10 +4,10 @@ process PYMIF_CONVERSION {
     container 'ghcr.io/grinic/pymif:2026.7.4'
 
     input:
-    tuple val(meta), val(row), path(input_dataset)
+    tuple val(meta), path(input_dataset)
 
     output:
-    tuple val(meta), val(row.output_name), emit: zarr
+    tuple val(meta), val(meta.zarr_output_name), emit: zarr
     path "versions.yml"                  , emit: versions
 
     when:
@@ -35,21 +35,21 @@ process PYMIF_CONVERSION {
     // Required CSV columns have CLI names that differ from their headers.
     def commandParts = [
         'pymif', '2zarr',
-        '--input_path', shellQuote(row.input),
-        '--zarr_path', shellQuote(row.output_name)
+        '--input_path', shellQuote(meta.input),
+        '--zarr_path', shellQuote(meta.zarr_output_name)
     ]
 
-    if (isPresent(row.microscope)) {
-        commandParts.addAll(['--microscope', shellQuote(row.microscope)])
+    if (isPresent(meta.microscope)) {
+        commandParts.addAll(['--microscope', shellQuote(meta.microscope)])
     }
 
     // CSV header "max_size(MB)" maps to --max_size. An explicit chunk size
     // takes precedence, matching PyMIF's batch conversion behavior.
-    if (isPresent(row.chunk_size)) {
+    if (isPresent(meta.chunk_size)) {
         commandParts.add('--chunk_size')
-        commandParts.addAll(numericValues(row.chunk_size).collect { shellQuote(it) })
-    } else if (isPresent(row['max_size(MB)'])) {
-        commandParts.addAll(['--max_size', shellQuote(row['max_size(MB)'])])
+        commandParts.addAll(numericValues(meta.chunk_size).collect { shellQuote(it) })
+    } else if (isPresent(meta['max_size(MB)'])) {
+        commandParts.addAll(['--max_size', shellQuote(meta['max_size(MB)'])])
     }
 
     [
@@ -58,8 +58,8 @@ process PYMIF_CONVERSION {
         num_levels: '--num_levels',
         subset: '--subset'
     ].each { header, option ->
-        if (isPresent(row[header])) {
-            commandParts.addAll([option, shellQuote(row[header])])
+        if (isPresent(meta[header])) {
+            commandParts.addAll([option, shellQuote(meta[header])])
         }
     }
 
@@ -68,10 +68,10 @@ process PYMIF_CONVERSION {
         channel_names: '--channel_names',
         channel_colors: '--channel_colors'
     ].each { header, option ->
-        if (isPresent(row[header])) {
+        if (isPresent(meta[header])) {
             def values = header == 'downscale_factor' ?
-                numericValues(row[header]) :
-                channelValues(row[header])
+                numericValues(meta[header]) :
+                channelValues(meta[header])
             commandParts.add(option)
             commandParts.addAll(values.collect { shellQuote(it) })
         }
@@ -80,10 +80,10 @@ process PYMIF_CONVERSION {
     def command = commandParts.join(' ')
 
     """
-    if [ -d ${shellQuote(row.output_name)} ] && [ -e ${shellQuote(row.output_name)}/zarr.json -o -e ${shellQuote(row.output_name)}/.zgroup ]; then
-        echo "Output already exists, skipping conversion: ${row.output_name}"
+    if [ -d ${shellQuote(meta.zarr_output_name)} ] && [ -e ${shellQuote(meta.zarr_output_name)}/zarr.json -o -e ${shellQuote(meta.zarr_output_name)}/.zgroup ]; then
+        echo "Output already exists, skipping conversion: ${meta.zarr_output_name}"
     else
-        mkdir -p \$(dirname ${shellQuote(row.output_name)})
+        mkdir -p \$(dirname ${shellQuote(meta.zarr_output_name)})
         ${command} ${args}
     fi
 
@@ -95,7 +95,7 @@ process PYMIF_CONVERSION {
 
     stub:
     """
-    mkdir -p "${row.output_name}"
+    mkdir -p "${meta.zarr_output_name}"
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         pymif: "stub"

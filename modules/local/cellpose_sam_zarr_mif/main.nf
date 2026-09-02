@@ -1,4 +1,4 @@
-process CELLPOSE_SAM_ZARR_WIP {
+process CELLPOSE_SAM_ZARR_MIF {
     tag "$meta.id"
     label "process_high"
     label "gpu"

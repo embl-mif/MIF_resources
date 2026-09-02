@@ -2,9 +2,9 @@
 
 nextflow.enable.dsl = 2
 
-include { PYMIF_CONVERSION_WIP              } from '../../modules/local/pymif_conversion_wip/main'
-include { PYMIF_MIP_ZARR_WIP                } from '../../modules/local/pymif_mip_zarr_wip/main'
-include { CELLPOSE_SAM_ZARR_WIP         } from '../../modules/local/cellpose_sam_zarr_wip/main'
+include { PYMIF_CONVERSION              } from '../../modules/local/pymif_conversion/main'
+include { PYMIF_MIP_ZARR                } from '../../modules/local/pymif_mip_zarr/main'
+include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
 workflow {
     def zarr_dir = "${file(params.outdir)}/zarr"
@@ -52,7 +52,7 @@ workflow {
             tuple(meta, input_dataset)
         }
 
-    PYMIF_CONVERSION_WIP(pymif_inputs_ch)
+    PYMIF_CONVERSION(pymif_inputs_ch)
 
     /*
      * Creates a multiscale 2D OME-Zarr by applying max() over Z at every
@@ -61,9 +61,9 @@ workflow {
      * Expected output:
      * tuple(meta, mip_zarr)
      */
-    PYMIF_MIP_ZARR_WIP(PYMIF_CONVERSION_WIP.out.zarr)
+    PYMIF_MIP_ZARR(PYMIF_CONVERSION.out.zarr)
 
-    CELLPOSE_SAM_ZARR_WIP(PYMIF_MIP_ZARR_WIP.out.zarr)
+    CELLPOSE_SAM_ZARR_MIF(PYMIF_MIP_ZARR.out.zarr)
 
 }
 

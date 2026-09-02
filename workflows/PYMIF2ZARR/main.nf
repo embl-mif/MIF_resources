@@ -14,20 +14,15 @@ workflow {
         .map { row ->
             def input_dataset = file(row.input, checkIfExists: true)
 
-            def output_dataset = file(row.output, checkIfExists: false)
-            if( !output_dataset.isAbsolute() ) {
-                error "CSV column 'output' must be an absolute path, got: ${row.output}"
-            }
-
-            def meta = [
-                id: input_dataset.simpleName,
-                outdir: output_dataset.parent ?: input_dataset.parent
+            def dataset_id = row.dataset_id?.toString()?.trim()
+                ?: input_dataset.simpleName
+            
+            def meta = row + [
+                id                       : dataset_id,
+                zarr_output_name         : row.output,
             ]
 
-            def row2 = row + [
-                output_name: output_dataset.name,
-            ]
-            return [meta, row2, input_dataset]
+            tuple(meta, input_dataset)
         }
 
     PYMIF_CONVERSION(pymif_inputs_ch)

@@ -1,4 +1,4 @@
-process PYMIF_MIP_ZARR_WIP {
+process PYMIF_MIP_ZARR {
     tag "${meta.id}"
     label 'process_medium'
     container 'ghcr.io/grinic/pymif:2026.7.4'
