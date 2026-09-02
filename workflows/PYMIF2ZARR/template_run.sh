@@ -15,7 +15,7 @@ module load Nextflow/25.10.1
 cd /scratch/$USER/test_modules # <----------------MODFY TO YOUR DESIRED WORK LOCATION
 
 #Using 'export' ensures these are visible to Nextflow sub-processes
-export NF_PATH="/home/$USER/projects/mif-resources/workflows/PYMIF2ZARR/main.nf" # <----------------MODIFY TO YOUR LOCAL REPO PATH
+export NF_PATH="/home/$USER/projects/mif-resources/workflows/pymif2zarr/main.nf" # <----------------MODIFY TO YOUR LOCAL REPO PATH
 export CSV_PATH="/PATH/TO/batch.csv"           # <----------------MODIFY
 
 # Run Nextflow
