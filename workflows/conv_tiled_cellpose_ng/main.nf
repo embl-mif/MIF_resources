@@ -2,10 +2,9 @@
 
 nextflow.enable.dsl = 2
 
-include { PYMIF_CONVERSION              } from '../../modules/local/pymif_conversion/main'
-include { TILECONSTRUCTOR_INPUT_PREP    } from '../../modules/local/tileconstructor_input_prep/main'
-include { TILE_CONSTRUCTOR              } from '../../modules/local/tileconstructor/main'
-include { CELLPOSE_SAM_ZARR             } from '../../modules/local/cellpose_sam_zarr/main'
+include { PYMIF_CONVERSION                   } from '../../modules/local/pymif_conversion/main'
+include { TILE_CONSTRUCTOR                   } from '../../modules/local/tileconstructor/main'
+include { CELLPOSE_SAM_ZARR_MIF              } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
 workflow {
     def zarr_dir = "${file(params.outdir)}/zarr"
@@ -39,7 +38,7 @@ workflow {
             def z_max            = row.z_max?.toString()?.trim()
             def t_min            = row.t_min?.toString()?.trim()
             def t_max            = row.t_max?.toString()?.trim()
-            def cellpose_halo = params.cellpose_halo ?: 0.0
+            def cellpose_halo    = params.cellpose_halo ?: 0.0
 
             // Parameters for cellpose segmentation
 
@@ -89,10 +88,10 @@ workflow {
 
     PYMIF_CONVERSION(pymif_inputs_ch)
 
-    TILE_CONSTRUCTOR(ch_cellpose_input)
+    TILE_CONSTRUCTOR(PYMIF_CONVERSION.out.zarr)
 
     ch_cellpose_inputs = TILE_CONSTRUCTOR.out.tiles
-        .join(ch_cellpose_input)
+        .join(pymif_inputs_ch)
         .flatMap { meta, tiles_csv, raw_zarr ->
             tiles_csv.splitCsv(header: true).collect { row ->
                 def tile_meta = meta.clone()
@@ -102,7 +101,7 @@ workflow {
                 tile_meta.x_max = row.x_max as Integer
                 tile_meta.z_min = (row.z_min && row.z_min != '') ? row.z_min as Integer : null
                 tile_meta.z_max = (row.z_max && row.z_max != '') ? row.z_max as Integer : null
-                tile_meta.halo = cellpose_halo
+                tile_meta.halo = row.cellpose_halo
                 return [ tile_meta, raw_zarr]
             }
         }
