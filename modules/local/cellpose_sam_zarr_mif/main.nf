@@ -54,7 +54,6 @@ process CELLPOSE_SAM_ZARR_MIF {
     maxRetries 2
     
     // Set up environment
-    // FIXME: Replace conda with a container
     container "docker://registry.git.embl.org/grp-cba/containers/cellposesam-zarr:4.1.1"
 
     input:
@@ -62,7 +61,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     path(pretrained_cellpose_model)
 
     output:
-    tuple val(meta), path("*.ome.zarr"), emit: labels
+    tuple val(meta), path(meta.labels_output_name), emit: labels
 
     script:
     def image = image_uri ?: local_image
