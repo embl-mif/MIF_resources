@@ -105,6 +105,6 @@ workflow {
                 return [ tile_meta, raw_zarr]
             }
         }
-    CELLPOSE_SAM_ZARR(ch_cellpose_inputs)
+    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
 }
 
