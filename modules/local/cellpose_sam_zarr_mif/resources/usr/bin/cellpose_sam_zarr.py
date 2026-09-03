@@ -748,7 +748,22 @@ def cellpose_zarr(
 
     nz.to_ngff_zarr(output_zarr, label_multiscales, version=version)
 
-    
+    # Cellpose instance IDs must be an integer dtype.
+    label_root = zarr.open_group(output_zarr, mode="a")
+    image_label_metadata = {
+            "source": {
+            "image": "../"
+            }
+        }
+
+    if version == "0.5":
+        ome = dict(label_root.attrs.get("ome", {}))
+        ome["image-label"] = image_label_metadata
+        label_root.attrs["ome"] = ome
+    else:
+        label_root.attrs["image-label"] = image_label_metadata
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
