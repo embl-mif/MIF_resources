@@ -297,12 +297,20 @@ def construct_tiles(
                     "tile_overlap_x": overlap_voxel["x"],
                     "tile_overlap_y": overlap_voxel["y"],
                     "tile_overlap_z": "",
+                    # The *requested* tile size, not this tile's own (possibly clamped/merged,
+                    # see gap #11) width -- constant across every row of one source image, so
+                    # Module 6a/6b can read it off any row to derive the output store's
+                    # per-axis chunk size (tile_size - tile_overlap, the tiling stride).
+                    "tile_size_x": tile_sizes_voxel["x"],
+                    "tile_size_y": tile_sizes_voxel["y"],
+                    "tile_size_z": "",
                 }
                 row["dataset_id"] = f"{source_dataset_id}__{row['tile_id']}"
                 if "z" in roi_bounds:
                     row["z_min"] = z_bounds_vox[0]
                     row["z_max"] = z_bounds_vox[1]
                     row["tile_overlap_z"] = overlap_voxel["z"]
+                    row["tile_size_z"] = tile_sizes_voxel["z"]
                 rows.append(row)
 
     with open(output_csv, "w", newline="", encoding="utf-8") as handle:
@@ -324,6 +332,9 @@ def construct_tiles(
                 "tile_overlap_x",
                 "tile_overlap_y",
                 "tile_overlap_z",
+                "tile_size_x",
+                "tile_size_y",
+                "tile_size_z",
             ],
         )
         writer.writeheader()
@@ -393,4 +404,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

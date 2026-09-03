@@ -1,23 +1,24 @@
 process TILE_CONSTRUCTOR {
     tag "$meta.id"
-    label 'process_low'
+    label "light"
 
-    //conda "${moduleDir}/environment.yml" 
     container "docker://registry.git.embl.org/grp-cba/containers/zarr_tools:0.34.0"
 
     input:
-    tuple val(meta), val(image)
+    tuple val(meta), path(local_image), val(image_uri)
 
     output:
     tuple val(meta), path("*.csv"), emit: tiles
 
     script:
+    def image = image_uri ?: local_image
     def output_csv = "${meta.id}_tiles.csv"
     def resolution_level_arg = meta.resolution_level != null ? "--resolution-level ${meta.resolution_level}" : ""
     def tile_size_x_arg = meta.tile_size_x != null ? "--tile-size-x ${meta.tile_size_x}" : ""
     def tile_size_y_arg = meta.tile_size_y != null ? "--tile-size-y ${meta.tile_size_y}" : ""
     def tile_size_z_arg = meta.tile_size_z != null ? "--tile-size-z ${meta.tile_size_z}" : ""
     def tile_overlap_arg = meta.tile_overlap != null ? "--tile-overlap ${meta.tile_overlap}" : ""
+    def halo_arg = meta.halo != null ? "--halo ${meta.halo}" : ""
     def x_min_arg = meta.x_min != null ? "--x-min ${meta.x_min}" : ""
     def x_max_arg = meta.x_max != null ? "--x-max ${meta.x_max}" : ""
     def y_min_arg = meta.y_min != null ? "--y-min ${meta.y_min}" : ""
@@ -31,7 +32,7 @@ process TILE_CONSTRUCTOR {
     }
 
     """
-    tile_constructor_2.py \\
+    python ${workflow.projectDir}/bin/tile_constructor.py \\
         --source-dataset-id "${meta.id}" \\
         --input-image-path \"${image}\" \\
         --output-csv ${output_csv} \\
@@ -39,6 +40,7 @@ process TILE_CONSTRUCTOR {
         ${tile_size_y_arg} \\
         ${tile_size_z_arg} \\
         ${tile_overlap_arg} \\
+        ${halo_arg} \\
         ${resolution_level_arg} \\
         ${x_min_arg} \\
         ${x_max_arg} \\
@@ -50,12 +52,12 @@ process TILE_CONSTRUCTOR {
     """
 
     stub:
+    def image = image_uri ?: local_image
     def output_csv = "${meta.id}_tiles.csv"
     """
     cat > ${output_csv} <<-END_TILE_CSV
-    dataset_id,source_dataset_id,tile_id,input_uri,x_min,x_max,y_min,y_max,z_min,z_max,resolution_level
-    ${meta.id}__tile_000001,${meta.id},tile_000001,${image},0,1,0,1,,,0
+    dataset_id,source_dataset_id,tile_id,tile_index,input_uri,x_min,x_max,y_min,y_max,z_min,z_max,resolution_level,tile_overlap_x,tile_overlap_y,tile_overlap_z,tile_size_x,tile_size_y,tile_size_z
+    ${meta.id}__tile_000001,${meta.id},tile_000001,1,${image},0,1,0,1,,,0,0,0,,1,1,
     END_TILE_CSV
     """
 }
-
