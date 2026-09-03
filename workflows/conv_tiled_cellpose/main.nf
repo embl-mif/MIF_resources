@@ -5,7 +5,7 @@ nextflow.enable.dsl = 2
 include { PYMIF_CONVERSION              } from '../../modules/local/pymif_conversion/main'
 include { TILECONSTRUCTOR_INPUT_PREP    } from '../../modules/local/tileconstructor_input_prep/main'
 include { TILE_CONSTRUCTOR              } from '../../modules/local/tileconstructor/main'
-include { CELLPOSE_SAM_ZARR             } from '../../modules/local/cellpose_sam_zarr/main'
+include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
 workflow {
     def zarr_dir = "${file(params.outdir)}/zarr"
@@ -97,6 +97,6 @@ workflow {
                 return [ tile_meta, raw_zarr]
             }
         }
-    CELLPOSE_SAM_ZARR(ch_cellpose_inputs)
+    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
 }
 
