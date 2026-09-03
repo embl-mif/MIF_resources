@@ -88,7 +88,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     def niter_arg = meta.niter != null ? "--niter ${meta.niter}" : ""
     def flow_threshold_arg = meta.flow_threshold != null ? "--flow-threshold ${meta.flow_threshold}" : ""
     def cellprob_threshold_arg = meta.cellprob_threshold != null ? "--cellprob-threshold ${meta.cellprob_threshold}" : ""
-    def do_3D_arg = meta.do_3D != null ? "--do-3D ${meta.do_3D}" : ""
+    def do_3D_arg = meta.do_3D != null ? "--do_3D ${meta.do_3D}" : ""
 
     def args = task.ext.args ?: ''
 
