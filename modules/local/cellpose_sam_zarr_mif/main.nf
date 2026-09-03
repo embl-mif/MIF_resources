@@ -61,7 +61,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     path(pretrained_cellpose_model)
 
     output:
-    tuple val(meta), path(meta.labels_output_name), emit: labels
+    tuple val(meta), val(meta.labels_output_name), emit: labels
 
     script:
     def image = image_uri ?: local_image
@@ -93,7 +93,6 @@ process CELLPOSE_SAM_ZARR_MIF {
     def args = task.ext.args ?: ''
 
     """
-    cellpose_sam_zarr.py \
     cellpose_sam_zarr.py \
         --input_zarr "${image}" \
         --output_zarr ${meta.labels_output_name} \
