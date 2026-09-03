@@ -46,6 +46,6 @@ workflow {
 
     PYMIF_CONVERSION(pymif_inputs_ch)
 
-    CELLPOSE_SAM_ZARR_MIF(pymif_inputs_ch.out.zarr)
+    CELLPOSE_SAM_ZARR_MIF(PYMIF_CONVERSION.out.zarr)
 }
 

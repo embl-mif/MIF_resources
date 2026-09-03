@@ -32,7 +32,7 @@ process TILE_CONSTRUCTOR {
     }
 
     """
-    python ${workflow.projectDir}/bin/tile_constructor.py \\
+    tile_constructor.py \\
         --source-dataset-id "${meta.id}" \\
         --input-image-path \"${image}\" \\
         --output-csv ${output_csv} \\
