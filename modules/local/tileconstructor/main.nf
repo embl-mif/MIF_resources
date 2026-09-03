@@ -5,7 +5,7 @@ process TILE_CONSTRUCTOR {
     container "docker://registry.git.embl.org/grp-cba/containers/zarr_tools:0.34.0"
 
     input:
-    tuple val(meta), path(local_image), val(image_uri)
+    tuple val(meta), val(image_uri)
 
     output:
     tuple val(meta), path("*.csv"), emit: tiles
