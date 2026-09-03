@@ -22,6 +22,7 @@ workflow {
             def diameter_value = row.cellpose_diameter?.toString()?.trim()
             def niter_value = row.cellpose_niter?.toString()?.trim()
             def cellpose_channels = row.cellpose_channels?.toString()?.trim()
+            def do_3D_value = row.do_3D?.toString()?.trim()
 
             def resolved_zarr_output =
                 "${zarr_dir}/${file(row.output).name}"
@@ -39,6 +40,7 @@ workflow {
                 diameter                 : diameter_value ? diameter_value as int : null,
                 niter                    : niter_value ? niter_value as int : null,
                 segmentation_channels    : cellpose_channels ?: null
+                do_3D                    : do_3D_value ? do_3D_value as boolean : false
             ]
 
             tuple(meta, input_dataset)
