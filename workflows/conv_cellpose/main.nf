@@ -39,7 +39,7 @@ workflow {
                 labels_output_name       : resolved_labels_output,
                 diameter                 : diameter_value ? diameter_value as int : null,
                 niter                    : niter_value ? niter_value as int : null,
-                segmentation_channels    : cellpose_channels ?: null
+                segmentation_channels    : cellpose_channels ?: null,
                 do_3D                    : do_3D_value ? do_3D_value as boolean : false
             ]
 
