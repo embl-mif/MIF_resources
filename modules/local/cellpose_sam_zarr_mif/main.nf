@@ -1,6 +1,5 @@
-process CELLPOSE_SAM_ZARR_MIF {
+process CELLPOSE_SAM_ZARR {
     tag "$meta.id"
-    label "process_high"
     label "gpu"
 
     // Catch GPU OOM errors
@@ -58,28 +57,46 @@ process CELLPOSE_SAM_ZARR_MIF {
     container "docker://registry.git.embl.org/grp-cba/containers/cellposesam-zarr:4.1.1"
 
     input:
-    tuple val(meta), path(image)
+    tuple val(meta), path(local_image), val(image_uri)
+    path(pretrained_cellpose_model)
 
     output:
-    tuple val(meta), val(meta.labels_output_name), emit: labels
+    tuple val(meta), path("*.ome.zarr"), emit: labels
 
     script:
-    def x_min_arg = meta.x_min != null ? "--x-min ${meta.x_min}" : ""
-    def x_max_arg = meta.x_max != null ? "--x-max ${meta.x_max}" : ""
-    def y_min_arg = meta.y_min != null ? "--y-min ${meta.y_min}" : ""
-    def y_max_arg = meta.y_max != null ? "--y-max ${meta.y_max}" : ""
-    def z_min_arg = meta.z_min != null ? "--z-min ${meta.z_min}" : ""
-    def z_max_arg = meta.z_max != null ? "--z-max ${meta.z_max}" : ""
-    def channels_arg = meta.segmentation_channels != null ? "--segmentation_channels ${meta.segmentation_channels}" : ""
-    def halo_arg = meta.halo != null ? "--halo ${meta.halo}" : ""
-    def resolution_level_arg = meta.resolution_level != null ? "--resolution-level ${meta.resolution_level}" : ""
+    def image = image_uri ?: local_image
+    def output_zarr = "${meta.id}_labels.ome.zarr"
+    // pretrained_cellpose_model is always a staged, non-null Path (even the NO_MODEL_FILE
+    // sentinel from assets/NO_MODEL_FILE when no custom model was requested -- see
+    // tiled_cellpose_sam_zarr subworkflow), so presence must be checked by name,
+    // not truthiness (same pitfall documented in locallabelmatcher/main.nf). It's a
+    // distinct filename from the local_image sentinel (assets/NO_FILE) on purpose --
+    // two `path` inputs resolving to the same filename in one task otherwise trigger a
+    // Nextflow "input file name collision" error.
+    def cellpose_model_arg = pretrained_cellpose_model.name != 'NO_MODEL_FILE' ? "-m ${pretrained_cellpose_model}" : ""
+
+    def x_min_arg = Utils.optionalCliArg("--x-min", meta.x_min)
+    def x_max_arg = Utils.optionalCliArg("--x-max", meta.x_max)
+    def y_min_arg = Utils.optionalCliArg("--y-min", meta.y_min)
+    def y_max_arg = Utils.optionalCliArg("--y-max", meta.y_max)
+    def z_min_arg = Utils.optionalCliArg("--z-min", meta.z_min)
+    def z_max_arg = Utils.optionalCliArg("--z-max", meta.z_max)
+    def channels_arg = Utils.optionalCliArg("--segmentation_channels", meta.segmentation_channels)
+    def halo_arg = Utils.optionalCliArg("--halo", meta.halo)
+    def resolution_level_arg = Utils.optionalCliArg("--resolution-level", meta.resolution_level)
     def use_physical_units_arg = meta.use_physical_units ? "--use-physical-units" : ""
-    def diameter = meta.diameter != null ? "--diameter ${meta.diameter}" : ""
-    def niter = meta.niter != null ? "--niter ${meta.niter}" : ""
+    
+    def diameter_arg = meta.diameter != null ? "--diameter ${meta.diameter}" : ""
+    def niter_arg = meta.niter != null ? "--niter ${meta.niter}" : ""
+    def flow_threshold_arg = meta.flow_threshold != null ? "--flow-threshold ${meta.flow_threshold}" : ""
+    def cellprob_threshold_arg = meta.cellprob_threshold != null ? "--cellprob-threshold ${meta.cellprob_threshold}" : ""
+
+    def args = task.ext.args ?: ''
+
     """
-    cellpose_sam_zarr.py \
+    python ${workflow.projectDir}/bin/cellpose_sam_zarr.py \
         --input_zarr "${image}" \
-        --output_zarr ${meta.labels_output_name} \
+        --output_zarr ${output_zarr} \
         ${channels_arg} \
         ${x_min_arg} \
         ${x_max_arg} \
@@ -90,15 +107,19 @@ process CELLPOSE_SAM_ZARR_MIF {
         ${halo_arg} \
         ${resolution_level_arg} \
         ${use_physical_units_arg} \
-        ${diameter} \
-        ${niter}
+        ${cellpose_model_arg} \
+        ${diameter_arg} \
+        ${niter_arg} \
+        ${flow_threshold_arg} \
+        ${cellprob_threshold_arg} \
+        ${args}
     """
 
     stub:
+    def output_zarr = "${meta.id}_labels.ome.zarr"
     """
-    mkdir -p ${meta.labels_output_name}
-    touch ${meta.labels_output_name}/.zgroup
+    mkdir -p ${output_zarr}
+    touch ${output_zarr}/.zgroup
     """
 
 }
-

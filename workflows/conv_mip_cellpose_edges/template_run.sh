@@ -19,9 +19,11 @@ cd "/scratch/$USER/conv_mip_cellpose_edges" # <---------- MODIFY IF NEEDED
 
 # Exporting these variables makes them visible to Nextflow subprocesses.
 export NF_PATH="/home/$USER/projects/mif-resources/workflows/conv_mip_cellpose_edges/main.nf" # <--- MODIFY
+export WDIR="/PATH/TO/WORK/DIRECTORY" <----------------MODIFY TO YOUR DESIRED WORK LOCATION
 export CSV_PATH="/PATH/TO/batch.csv" # <----------------- MODIFY
-export OUTDIR="/scratch/$USER/conv_mip_cellpose_edges/results" # <--- MODIFY
+# export OUTDIR="/scratch/$USER/conv_mip_cellpose_edges/results" # <--- MODIFY
 
 nextflow run "$NF_PATH" \
+    -work-dir "$WDIR" \
     --input_csv "$CSV_PATH" \
     -resume

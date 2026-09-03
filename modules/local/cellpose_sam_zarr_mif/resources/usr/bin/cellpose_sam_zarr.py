@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 """
-Developed by Tischi, CBA
-https://git.embl.org/grp-cba/nextflow-pipelines/-/blob/roi2/bin/cellpose_sam_zarr.py
 Instructions to run this code:
 
 * Setup environment for cellpose and ngff-zarr
@@ -233,6 +231,29 @@ def _parse_index_cli_values(values: list[str] | None, option_name: str) -> list[
         ) from exc
 
 
+def _parse_optional_float_cli(value: str) -> float | None:
+    text = str(value).strip()
+    if text.lower() == "none":
+        return None
+    return float(text)
+
+
+def _parse_optional_int_cli(value: str) -> int | None:
+    text = str(value).strip()
+    if text.lower() == "none":
+        return None
+    return int(text)
+
+
+def _parse_bool_cli(value: str) -> bool:
+    text = str(value).strip().lower()
+    if text in {"true", "1", "yes"}:
+        return True
+    if text in {"false", "0", "no", "none"}:
+        return False
+    raise argparse.ArgumentTypeError(f"invalid boolean value: {value!r}")
+
+
 def _normalize_bounds_arg(
     min_value: float | None,
     max_value: float | None,
@@ -410,7 +431,6 @@ def _match_mask_shape(mask: np.ndarray, expected_shape: tuple[int, ...]) -> np.n
     return np.asarray(adjusted)
 
 
-# TODO: Expose do3D as a parameter? Currently it is automatically determined from the anisotropy
 def run_cellpose(
     data: Any,
     dims: list[str],
@@ -428,7 +448,13 @@ def run_cellpose(
     halo: float = 0.0,
     use_physical_units: bool = False,
     diameter: float | None = None,
+    flow_threshold: float = 0.4,
+    cellprob_threshold: float = 0.0,
+    do_3D: bool = False,
+    flow3D_smooth: float = 0.0,
+    stitch_threshold: float = 0.1,
     niter: int | None = None,
+    min_size: int = 15,
 ) -> dict[str, Any]:
     model_kwargs = resolve_cellpose_gpu_device()
     if cellpose_model_path:
@@ -491,21 +517,25 @@ def run_cellpose(
         if not has_channel_axis and input_data.ndim not in (2, 3):
             raise ValueError(f"Expected 2D or 3D data for Cellpose, got shape {input_data.shape}")
 
-        eval_kwargs: dict[str, Any] = {}
+        eval_kwargs: dict[str, Any] = {
+            "flow_threshold": flow_threshold,
+            "cellprob_threshold": cellprob_threshold,
+            "min_size": min_size,
+            "niter": niter,
+        }
+        if diameter is not None:
+            eval_kwargs["diameter"] = diameter
         if has_channel_axis:
             eval_kwargs["channel_axis"] = input_dims.index("c")
         if n_slices > 1:
             eval_kwargs["z_axis"] = input_dims.index("z")
-            if anisotropy < 8:
+            if do_3D or anisotropy < 8:
                 eval_kwargs["do_3D"] = True
                 eval_kwargs["anisotropy"] = anisotropy
+                eval_kwargs["flow3D_smooth"] = flow3D_smooth
             else:
                 eval_kwargs["do_3D"] = False
-                eval_kwargs["stitch_threshold"] = 0.1  # FIXME: What is a good value??
-        if diameter:
-            eval_kwargs["diameter"] = diameter
-        if niter:
-            eval_kwargs["niter"] = niter
+                eval_kwargs["stitch_threshold"] = stitch_threshold
 
         label_mask, _, _ = model.eval(input_data, **eval_kwargs)
 
@@ -588,10 +618,16 @@ def cellpose_zarr(
     z_max: float | None = None,
     halo: float = 0.0,
     use_physical_units: bool = False,
+    diameter: float | None = None,
+    flow_threshold: float = 0.4,
+    cellprob_threshold: float = 0.0,
+    do_3D: bool = False,
+    flow3D_smooth: float = 0.0,
+    stitch_threshold: float = 0.1,
+    niter: int | None = None,
+    min_size: int = 15,
     resolution_level: int = 0,
     ome_zarr_version: str | None = None,
-    diameter: float | None = None,
-    niter: int | None = None,
 ) -> None:
 
     io.logger_setup()
@@ -637,7 +673,13 @@ def cellpose_zarr(
         halo=halo,
         use_physical_units=use_physical_units,
         diameter=diameter,
-        niter=niter
+        flow_threshold=flow_threshold,
+        cellprob_threshold=cellprob_threshold,
+        do_3D=do_3D,
+        flow3D_smooth=flow3D_smooth,
+        stitch_threshold=stitch_threshold,
+        niter=niter,
+        min_size=min_size,
     )
 
     print(f"Cellpose device settings: {result['model_kwargs']}")
@@ -706,21 +748,6 @@ def cellpose_zarr(
 
     nz.to_ngff_zarr(output_zarr, label_multiscales, version=version)
 
-    # Cellpose instance IDs must be an integer dtype.
-    label_root = zarr.open_group(output_zarr, mode="a")
-    image_label_metadata = {
-            "source": {
-            "image": "../"
-            }
-        }
-
-    if version == "0.5":
-        ome = dict(label_root.attrs.get("ome", {}))
-        ome["image-label"] = image_label_metadata
-        label_root.attrs["ome"] = ome
-    else:
-        label_root.attrs["image-label"] = image_label_metadata
-
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -772,8 +799,6 @@ if __name__ == "__main__":
     parser.add_argument("--y-max", type=float, default=None, help="Optional y-axis ROI upper bound (exclusive).")
     parser.add_argument("--z-min", type=float, default=None, help="Optional z-axis ROI lower bound (inclusive).")
     parser.add_argument("--z-max", type=float, default=None, help="Optional z-axis ROI upper bound (exclusive).")
-    parser.add_argument("--diameter", type=float, default=None, help="Optional cell somadiameter (in pixels).")
-    parser.add_argument("--niter", type=int, default=None, help="Optional number of iterations for cellpose.")
     parser.add_argument(
         "--halo",
         type=float,
@@ -790,6 +815,54 @@ if __name__ == "__main__":
         type=int,
         default=0,
         help="Zero-based OME-Zarr resolution layer to operate on. Default: 0.",
+    )
+    parser.add_argument(
+        "--diameter",
+        type=_parse_optional_float_cli,
+        default=None,
+        help="Expected cell diameter in pixels, or 'None' to auto-estimate.",
+    )
+    parser.add_argument(
+        "--flow_threshold",
+        type=float,
+        default=0.4,
+        help="Cellpose flow error threshold.",
+    )
+    parser.add_argument(
+        "--cellprob_threshold",
+        type=float,
+        default=0.0,
+        help="Cellpose cell probability threshold.",
+    )
+    parser.add_argument(
+        "--do_3D",
+        type=_parse_bool_cli,
+        default=False,
+        help="Force 3D segmentation. If False (default), 3D mode is auto-selected from image anisotropy.",
+    )
+    parser.add_argument(
+        "--flow3D_smooth",
+        type=float,
+        default=0.0,
+        help="Sigma for smoothing flows in 3D segmentation.",
+    )
+    parser.add_argument(
+        "--stitch_threshold",
+        type=float,
+        default=0.1,
+        help="IoU threshold used to stitch per-slice 2D masks into 3D labels when running non-3D segmentation on a z-stack.",
+    )
+    parser.add_argument(
+        "--niter",
+        type=_parse_optional_int_cli,
+        default=None,
+        help="Number of mask reconstruction iterations, or 'None' to use Cellpose's default.",
+    )
+    parser.add_argument(
+        "--min_size",
+        type=int,
+        default=15,
+        help="Minimum number of pixels for a valid mask.",
     )
 
     args = parser.parse_args()
@@ -815,9 +888,14 @@ if __name__ == "__main__":
         args.z_max,
         args.halo,
         args.use_physical_units,
-        args.resolution_level,
-        args.ome_zarr_version,
-        args.diameter,
-        args.niter,
+        diameter=args.diameter,
+        flow_threshold=args.flow_threshold,
+        cellprob_threshold=args.cellprob_threshold,
+        do_3D=args.do_3D,
+        flow3D_smooth=args.flow3D_smooth,
+        stitch_threshold=args.stitch_threshold,
+        niter=args.niter,
+        min_size=args.min_size,
+        resolution_level=args.resolution_level,
+        ome_zarr_version=args.ome_zarr_version,
     )
-
