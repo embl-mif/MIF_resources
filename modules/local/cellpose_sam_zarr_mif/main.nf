@@ -58,7 +58,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     container "docker://registry.git.embl.org/grp-cba/containers/cellposesam-zarr:4.1.1"
 
     input:
-    tuple val(meta), path(local_image), val(image_uri)
+    tuple val(meta), val(image_uri)
     path(pretrained_cellpose_model)
 
     output:
@@ -66,7 +66,6 @@ process CELLPOSE_SAM_ZARR_MIF {
 
     script:
     def image = image_uri ?: local_image
-    def output_zarr = "${meta.id}_labels.ome.zarr"
     // pretrained_cellpose_model is always a staged, non-null Path (even the NO_MODEL_FILE
     // sentinel from assets/NO_MODEL_FILE when no custom model was requested -- see
     // tiled_cellpose_sam_zarr subworkflow), so presence must be checked by name,
@@ -96,8 +95,9 @@ process CELLPOSE_SAM_ZARR_MIF {
 
     """
     cellpose_sam_zarr.py \
+    cellpose_sam_zarr.py \
         --input_zarr "${image}" \
-        --output_zarr ${output_zarr} \
+        --output_zarr ${meta.labels_output_name} \
         ${channels_arg} \
         ${x_min_arg} \
         ${x_max_arg} \
