@@ -58,7 +58,6 @@ process CELLPOSE_SAM_ZARR_MIF {
 
     input:
     tuple val(meta), val(image_uri)
-    path(pretrained_cellpose_model)
 
     output:
     tuple val(meta), val(meta.labels_output_name), emit: labels
@@ -72,7 +71,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     // distinct filename from the local_image sentinel (assets/NO_FILE) on purpose --
     // two `path` inputs resolving to the same filename in one task otherwise trigger a
     // Nextflow "input file name collision" error.
-    def cellpose_model_arg = pretrained_cellpose_model.name != 'NO_MODEL_FILE' ? "-m ${pretrained_cellpose_model}" : ""
+    def cellpose_model_arg = meta.pretrained_cellpose_model ? "-m ${meta.pretrained_cellpose_model}" : ""
 
     def x_min_arg = Utils.optionalCliArg("--x-min", meta.x_min)
     def x_max_arg = Utils.optionalCliArg("--x-max", meta.x_max)
