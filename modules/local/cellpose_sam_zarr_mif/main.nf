@@ -95,7 +95,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     def args = task.ext.args ?: ''
 
     """
-    python ${workflow.projectDir}/bin/cellpose_sam_zarr.py \
+    cellpose_sam_zarr.py \
         --input_zarr "${image}" \
         --output_zarr ${output_zarr} \
         ${channels_arg} \
