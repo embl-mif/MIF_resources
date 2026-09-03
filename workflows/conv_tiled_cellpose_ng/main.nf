@@ -18,14 +18,33 @@ workflow {
         .map { row ->
             def input_dataset = file(row.input, checkIfExists: true)
 
-            def resolved_output =  "${zarr_dir}/${file(row.output).name}"
+            def dataset_id = row.dataset_id?.toString()?.trim()
+                ?: input_dataset.simpleName
 
-            def meta = [id: input_dataset.simpleName ]
+            def diameter_value = row.cellpose_diameter?.toString()?.trim()
+            def niter_value = row.cellpose_niter?.toString()?.trim()
+            def cellpose_channels = row.cellpose_channels?.toString()?.trim()
 
-            def row2 = row + [
-                output_name: resolved_output
+            def resolved_zarr_output =
+                "${zarr_dir}/${file(row.output).name}"
+            
+            def labels_output_value = row.labels_output?.toString()?.trim()
+            def labels_output_name = labels_output_value
+                ? file(labels_output_value).name
+                : "${dataset_id}_labels.ome.zarr"
+            def resolved_labels_output = "${zarr_dir}/${labels_output_name}"
+
+            def meta = row + [
+                id                       : dataset_id,
+                zarr_output_name         : resolved_zarr_output,
+                mip_output_name          : resolved_mip_output,
+                labels_output_name       : resolved_labels_output,
+                diameter                 : diameter_value ? diameter_value as int : null,
+                niter                    : niter_value ? niter_value as int : null,
+                segmentation_channels    : cellpose_channels ?: null
             ]
-            return [meta, row2, input_dataset]
+
+            tuple(meta, input_dataset)
         }
 
     PYMIF_CONVERSION(pymif_inputs_ch)
