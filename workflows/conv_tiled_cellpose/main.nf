@@ -15,15 +15,39 @@ workflow {
 
     pymif_inputs_ch = input_csv_ch
         .splitCsv(header: true)
-        .map { row ->
+        .map { row, index ->
+
+            // Read the input dataset and prepare metadata for processing
             def input_dataset = file(row.input, checkIfExists: true)
 
             def dataset_id = row.dataset_id?.toString()?.trim()
-                ?: input_dataset.simpleName
+                ?: "${input_dataset.simpleName}_${index + 1}"
 
+            // Read optional parameters for tiling
+            def tile_size_x = row.tile_size_x?.toString()?.trim()
+            def tile_size_y = row.tile_size_y?.toString()?.trim()
+            def tile_size_z = row.tile_size_z?.toString()?.trim()
+            def tile_overlap = row.tile_overlap?.toString()?.trim()
+            def resolution_level = row.resolution_level?.toString()?.trim()
+            def x_min = row.x_min?.toString()?.trim()
+            def x_max = row.x_max?.toString()?.trim()
+            def y_min = row.y_min?.toString()?.trim()
+            def y_max = row.y_max?.toString()?.trim()
+            def z_min = row.z_min?.toString()?.trim()
+            def z_max = row.z_max?.toString()?.trim()
+            def t_min = row.t_min?.toString()?.trim()
+            def t_max = row.t_max?.toString()?.trim()
+            def use_physical_units = row.use_physical_units?.toString()?.trim()
+
+            // Read optional parameters for Cellpose processing
             def diameter_value = row.cellpose_diameter?.toString()?.trim()
             def niter_value = row.cellpose_niter?.toString()?.trim()
             def cellpose_channels = row.cellpose_channels?.toString()?.trim()
+
+            def do_3D_text = row.do_3D?.toString()?.trim()
+            def do_3D_value = do_3D_text
+                ? do_3D_text.equalsIgnoreCase('true')
+                : false
 
             def resolved_zarr_output =
                 "${zarr_dir}/${file(row.output).name}"
@@ -41,6 +65,7 @@ workflow {
                 diameter                 : diameter_value ? diameter_value as int : null,
                 niter                    : niter_value ? niter_value as int : null,
                 segmentation_channels    : cellpose_channels ?: null
+                do_3D                    : do_3D_value
             ]
 
             tuple(meta, input_dataset)
@@ -99,4 +124,3 @@ workflow {
         }
     CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
 }
-

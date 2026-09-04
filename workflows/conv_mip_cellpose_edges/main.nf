@@ -14,11 +14,11 @@ workflow {
 
     pymif_inputs_ch = input_csv_ch
         .splitCsv(header: true)
-        .map { row ->
+        .map { row, index ->
             def input_dataset = file(row.input, checkIfExists: true)
 
             def dataset_id = row.dataset_id?.toString()?.trim()
-                ?: input_dataset.simpleName
+                ?: "${input_dataset.simpleName}_${index + 1}"
 
             def diameter_value = row.cellpose_diameter?.toString()?.trim()
             def niter_value = row.cellpose_niter?.toString()?.trim()
