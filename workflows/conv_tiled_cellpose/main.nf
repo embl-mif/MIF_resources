@@ -96,21 +96,21 @@ workflow {
 
     TILE_CONSTRUCTOR(PYMIF_CONVERSION.out.zarr)
 
-    // ch_cellpose_inputs = TILE_CONSTRUCTOR.out.tiles
-    //     .join(ch_cellpose_input)
-    //     .flatMap { meta, tiles_csv, raw_zarr ->
-    //         tiles_csv.splitCsv(header: true).collect { row ->
-    //             def tile_meta = meta.clone()
-    //             tile_meta.y_min = row.y_min as Integer
-    //             tile_meta.y_max = row.y_max as Integer
-    //             tile_meta.x_min = row.x_min as Integer
-    //             tile_meta.x_max = row.x_max as Integer
-    //             tile_meta.z_min = (row.z_min && row.z_min != '') ? row.z_min as Integer : null
-    //             tile_meta.z_max = (row.z_max && row.z_max != '') ? row.z_max as Integer : null
-    //             tile_meta.halo = cellpose_halo
-    //             return [ tile_meta, raw_zarr]
-    //         }
-    //     }
-    // CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
+    ch_cellpose_inputs = TILE_CONSTRUCTOR.out.tiles
+        .join(ch_cellpose_input)
+        .flatMap { meta, tiles_csv, raw_zarr ->
+            tiles_csv.splitCsv(header: true).collect { row ->
+                def tile_meta = meta.clone()
+                tile_meta.y_min = row.y_min as Integer
+                tile_meta.y_max = row.y_max as Integer
+                tile_meta.x_min = row.x_min as Integer
+                tile_meta.x_max = row.x_max as Integer
+                tile_meta.z_min = (row.z_min && row.z_min != '') ? row.z_min as Integer : null
+                tile_meta.z_max = (row.z_max && row.z_max != '') ? row.z_max as Integer : null
+                tile_meta.halo = cellpose_halo
+                return [ tile_meta, raw_zarr]
+            }
+        }
+    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
 }
 

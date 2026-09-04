@@ -8,7 +8,7 @@ process TILE_CONSTRUCTOR {
     tuple val(meta), val(image_uri)
 
     output:
-    tuple val(meta), val(output_csv), emit: tiles
+    tuple val(meta), path("*_tiles.csv"), emit: tiles
 
     script:
     def image = image_uri ?: local_image
