@@ -38,12 +38,12 @@ workflow {
             def t_min = row.t_min?.toString()?.trim()
             def t_max = row.t_max?.toString()?.trim()
             def use_physical_units = row.use_physical_units?.toString()?.trim()
-            def cellpose_halo = row.cellpose_halo?.toString()?.trim()
 
             // Read optional parameters for Cellpose processing
             def diameter_value = row.cellpose_diameter?.toString()?.trim()
             def niter_value = row.cellpose_niter?.toString()?.trim()
             def cellpose_channels = row.cellpose_channels?.toString()?.trim()
+            def cellpose_halo = row.cellpose_halo?.toString()?.trim()
 
             def do_3D_text = row.do_3D?.toString()?.trim()
             def do_3D_value = do_3D_text
@@ -63,10 +63,10 @@ workflow {
                 id                       : dataset_id,
                 zarr_output_name         : resolved_zarr_output,
 
-                tile_size_x      : tile_size_x ? tile_size_x as int : null,
-                tile_size_y      : tile_size_y ? tile_size_y as int : null,
+                tile_size_x      : tile_size_x ? tile_size_x as int : 512,
+                tile_size_y      : tile_size_y ? tile_size_y as int : 512,
                 tile_size_z      : tile_size_z ? tile_size_z as int : null,
-                tile_overlap     : tile_overlap ? tile_overlap as float : null,
+                tile_overlap     : tile_overlap ? tile_overlap as float : 32,
                 resolution_level : resolution_level ? resolution_level as int : null,
                 x_min            : x_min ? x_min as float : null,
                 x_max            : x_max ? x_max as float : null,
@@ -76,13 +76,13 @@ workflow {
                 z_max            : z_max ? z_max as float : null,
                 t_min            : t_min != null && t_min != '' ? t_min as int : null,
                 t_max            : t_max != null && t_max != '' ? t_max as int : null,
-                cellpose_halo        : cellpose_halo != null && cellpose_halo != '' ? cellpose_halo as float : 20.0,
                 use_physical_units: use_physical_units ? use_physical_units.toBoolean() : false,
 
                 labels_output_name       : resolved_labels_output,
                 diameter                 : diameter_value ? diameter_value as int : null,
                 niter                    : niter_value ? niter_value as int : null,
                 segmentation_channels    : cellpose_channels ?: null
+                cellpose_halo        : cellpose_halo != null && cellpose_halo != '' ? cellpose_halo as float : 20.0,
                 do_3D                    : do_3D_value
             ]
 
@@ -91,59 +91,23 @@ workflow {
 
     PYMIF_CONVERSION(pymif_inputs_ch)
 
-    ch_zarr_conversion_done = PYMIF_CONVERSION.out.zarr.collect()
+    TILE_CONSTRUCTOR(PYMIF_CONVERSION.out.zarr)
 
-    config_csv_ch = TILECONSTRUCTOR_INPUT_PREP(ch_zarr_conversion_done.map { zarr_dir }, params.resolution_level)
-
-    // Read parent images and metadata from the input CSV file
-    input_ch = config_csv_ch.csv
-        .splitCsv(header: true)
-        .map { row ->
-            def meta = [
-                id               : row.dataset_id,
-                tile_size_x      : row.tile_size_x as int,
-                tile_size_y      : row.tile_size_y as int,
-                tile_size_z      : row.tile_size_z as int,
-                tile_overlap     : row.tile_overlap as float,
-                resolution_level : row.resolution_level as int,
-                x_min            : row.x_min ? row.x_min as float : null,
-                x_max            : row.x_max ? row.x_max as float : null,
-                y_min            : row.y_min ? row.y_min as float : null,
-                y_max            : row.y_max ? row.y_max as float : null,
-                z_min            : row.z_min ? row.z_min as float : null,
-                z_max            : row.z_max ? row.z_max as float : null,
-                t_min            : row.t_min != null && row.t_min != '' ? row.t_min as int : null,
-                t_max            : row.t_max != null && row.t_max != '' ? row.t_max as int : null,
-                cellpose_halo        : row.cellpose_halo != null && row.cellpose_halo != '' ? row.cellpose_halo as float : 20.0,
-                use_physical_units: false
-            ]
-            def image = file(row.input_image_path)
-            return [ meta, image ]
-        }
-    def cellpose_halo = params.cellpose_halo ?: 0.0
-
-
-    TILE_CONSTRUCTOR(ch_cellpose_input)
-
-    ch_cellpose_inputs = TILE_CONSTRUCTOR.out.tiles
-        .join(ch_cellpose_input)
-        .flatMap { meta, tiles_csv, raw_zarr ->
-            tiles_csv.splitCsv(header: true).collect { row ->
-                def tile_meta = meta.clone()
-                tile_meta.y_min = row.y_min as Integer
-                tile_meta.y_max = row.y_max as Integer
-                tile_meta.x_min = row.x_min as Integer
-                tile_meta.x_max = row.x_max as Integer
-                tile_meta.z_min = (row.z_min && row.z_min != '') ? row.z_min as Integer : null
-                tile_meta.z_max = (row.z_max && row.z_max != '') ? row.z_max as Integer : null
-                tile_meta.halo = cellpose_halo
-                return [ tile_meta, raw_zarr]
-            }
-        }
-    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
-}
-           }
-        }
-    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
+    // ch_cellpose_inputs = TILE_CONSTRUCTOR.out.tiles
+    //     .join(ch_cellpose_input)
+    //     .flatMap { meta, tiles_csv, raw_zarr ->
+    //         tiles_csv.splitCsv(header: true).collect { row ->
+    //             def tile_meta = meta.clone()
+    //             tile_meta.y_min = row.y_min as Integer
+    //             tile_meta.y_max = row.y_max as Integer
+    //             tile_meta.x_min = row.x_min as Integer
+    //             tile_meta.x_max = row.x_max as Integer
+    //             tile_meta.z_min = (row.z_min && row.z_min != '') ? row.z_min as Integer : null
+    //             tile_meta.z_max = (row.z_max && row.z_max != '') ? row.z_max as Integer : null
+    //             tile_meta.halo = cellpose_halo
+    //             return [ tile_meta, raw_zarr]
+    //         }
+    //     }
+    // CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
 }
 
