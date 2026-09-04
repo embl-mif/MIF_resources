@@ -70,7 +70,7 @@ The CSV is split into a channel containing one element per row. Each element
 has the following structure:
 
 ```groovy
-[meta, row, input_dataset]
+[meta, input_dataset]
 ```
 
 That channel is passed directly to `PYMIF_CONVERSION`.

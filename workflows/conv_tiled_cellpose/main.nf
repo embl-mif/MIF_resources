@@ -38,6 +38,7 @@ workflow {
             def t_min = row.t_min?.toString()?.trim()
             def t_max = row.t_max?.toString()?.trim()
             def use_physical_units = row.use_physical_units?.toString()?.trim()
+            def cellpose_halo = row.cellpose_halo?.toString()?.trim()
 
             // Read optional parameters for Cellpose processing
             def diameter_value = row.cellpose_diameter?.toString()?.trim()
@@ -61,6 +62,23 @@ workflow {
             def meta = row + [
                 id                       : dataset_id,
                 zarr_output_name         : resolved_zarr_output,
+
+                tile_size_x      : tile_size_x ? tile_size_x as int : null,
+                tile_size_y      : tile_size_y ? tile_size_y as int : null,
+                tile_size_z      : tile_size_z ? tile_size_z as int : null,
+                tile_overlap     : tile_overlap ? tile_overlap as float : null,
+                resolution_level : resolution_level ? resolution_level as int : null,
+                x_min            : x_min ? x_min as float : null,
+                x_max            : x_max ? x_max as float : null,
+                y_min            : y_min ? y_min as float : null,
+                y_max            : y_max ? y_max as float : null,
+                z_min            : z_min ? z_min as float : null,
+                z_max            : z_max ? z_max as float : null,
+                t_min            : t_min != null && t_min != '' ? t_min as int : null,
+                t_max            : t_max != null && t_max != '' ? t_max as int : null,
+                cellpose_halo        : cellpose_halo != null && cellpose_halo != '' ? cellpose_halo as float : 20.0,
+                use_physical_units: use_physical_units ? use_physical_units.toBoolean() : false,
+
                 labels_output_name       : resolved_labels_output,
                 diameter                 : diameter_value ? diameter_value as int : null,
                 niter                    : niter_value ? niter_value as int : null,
@@ -96,6 +114,7 @@ workflow {
                 z_max            : row.z_max ? row.z_max as float : null,
                 t_min            : row.t_min != null && row.t_min != '' ? row.t_min as int : null,
                 t_max            : row.t_max != null && row.t_max != '' ? row.t_max as int : null,
+                cellpose_halo        : row.cellpose_halo != null && row.cellpose_halo != '' ? row.cellpose_halo as float : 20.0,
                 use_physical_units: false
             ]
             def image = file(row.input_image_path)
@@ -103,7 +122,6 @@ workflow {
         }
     def cellpose_halo = params.cellpose_halo ?: 0.0
 
-    ch_cellpose_input = input_ch.map { meta, image -> tuple(meta + [halo: cellpose_halo], image) }
 
     TILE_CONSTRUCTOR(ch_cellpose_input)
 
@@ -124,3 +142,8 @@ workflow {
         }
     CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
 }
+           }
+        }
+    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
+}
+
