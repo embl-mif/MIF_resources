@@ -107,7 +107,7 @@ workflow {
                 tile_meta.x_max = row.x_max as Integer
                 tile_meta.z_min = (row.z_min && row.z_min != '') ? row.z_min as Integer : null
                 tile_meta.z_max = (row.z_max && row.z_max != '') ? row.z_max as Integer : null
-                tile_meta.halo = cellpose_halo
+                tile_meta.labels_output_name = "${tile_meta.dataset_id}_labels.ome.zarr"
                 return [ tile_meta, raw_zarr ]
             }
         }
