@@ -97,7 +97,7 @@ workflow {
     TILE_CONSTRUCTOR(PYMIF_CONVERSION.out.zarr)
 
     ch_cellpose_inputs = TILE_CONSTRUCTOR.out.tiles
-        .flatMap { meta, tiles_csv, raw_zarr ->
+        .flatMap { meta, tiles_csv ->
             tiles_csv.splitCsv(header: true).collect { row ->
                 def tile_meta = meta + [
                     id                 : row.dataset_id,
@@ -116,7 +116,7 @@ workflow {
                     labels_output_name : "${zarr_dir}/${row.dataset_id}_labels.ome.zarr"
                 ]
 
-                tuple(tile_meta, raw_zarr)
+                tuple(tile_meta, meta.zarr_output_name)
             }
         }
     CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
