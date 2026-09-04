@@ -9,6 +9,7 @@ include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam
 
 workflow {
     def zarr_dir = "${file(params.outdir)}/zarr"
+    def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
     input_csv_ch = Channel
         .fromPath(params.input_csv, checkIfExists: true)
