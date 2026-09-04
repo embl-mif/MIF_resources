@@ -97,7 +97,7 @@ workflow {
     TILE_CONSTRUCTOR(PYMIF_CONVERSION.out.zarr)
 
     ch_cellpose_inputs = TILE_CONSTRUCTOR.out.tiles
-        .join(ch_cellpose_input)
+        .join(pymif_inputs_ch)
         .flatMap { meta, tiles_csv, raw_zarr ->
             tiles_csv.splitCsv(header: true).collect { row ->
                 def tile_meta = meta.clone()
@@ -108,7 +108,7 @@ workflow {
                 tile_meta.z_min = (row.z_min && row.z_min != '') ? row.z_min as Integer : null
                 tile_meta.z_max = (row.z_max && row.z_max != '') ? row.z_max as Integer : null
                 tile_meta.halo = cellpose_halo
-                return [ tile_meta, raw_zarr]
+                return [ tile_meta, raw_zarr ]
             }
         }
     CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
