@@ -97,18 +97,26 @@ workflow {
     TILE_CONSTRUCTOR(PYMIF_CONVERSION.out.zarr)
 
     ch_cellpose_inputs = TILE_CONSTRUCTOR.out.tiles
-        .join(pymif_inputs_ch)
         .flatMap { meta, tiles_csv, raw_zarr ->
             tiles_csv.splitCsv(header: true).collect { row ->
-                def tile_meta = meta.clone()
-                tile_meta.y_min = row.y_min as Integer
-                tile_meta.y_max = row.y_max as Integer
-                tile_meta.x_min = row.x_min as Integer
-                tile_meta.x_max = row.x_max as Integer
-                tile_meta.z_min = (row.z_min && row.z_min != '') ? row.z_min as Integer : null
-                tile_meta.z_max = (row.z_max && row.z_max != '') ? row.z_max as Integer : null
-                tile_meta.labels_output_name = "${zarr_dir}/${tile_meta.dataset_id}_labels.ome.zarr"
-                return [ tile_meta, meta.zarr_output_name ]
+                def tile_meta = meta + [
+                    id                 : row.dataset_id,
+                    dataset_id         : row.dataset_id,
+                    source_dataset_id  : row.source_dataset_id,
+                    tile_id            : row.tile_id,
+                    tile_index         : row.tile_index as Integer,
+
+                    x_min              : row.x_min as Integer,
+                    x_max              : row.x_max as Integer,
+                    y_min              : row.y_min as Integer,
+                    y_max              : row.y_max as Integer,
+                    z_min              : row.z_min ? row.z_min as Integer : null,
+                    z_max              : row.z_max ? row.z_max as Integer : null,
+
+                    labels_output_name : "${zarr_dir}/${row.dataset_id}_labels.ome.zarr"
+                ]
+
+                tuple(tile_meta, raw_zarr)
             }
         }
     CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
