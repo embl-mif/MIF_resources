@@ -15,7 +15,9 @@ workflow {
 
     pymif_inputs_ch = input_csv_ch
         .splitCsv(header: true)
-        .map { row, index ->
+        .map { row ->
+
+            def index = row_index.getAndIncrement()
 
             // Read the input dataset and prepare metadata for processing
             def input_dataset = file(row.input, checkIfExists: true)
@@ -81,8 +83,8 @@ workflow {
                 labels_output_name       : resolved_labels_output,
                 diameter                 : diameter_value ? diameter_value as int : null,
                 niter                    : niter_value ? niter_value as int : null,
-                segmentation_channels    : cellpose_channels ?: null
-                cellpose_halo        : cellpose_halo != null && cellpose_halo != '' ? cellpose_halo as float : 20.0,
+                segmentation_channels    : cellpose_channels ?: null,
+                cellpose_halo            : cellpose_halo != null && cellpose_halo != '' ? cellpose_halo as float : 20.0,
                 do_3D                    : do_3D_value
             ]
 
