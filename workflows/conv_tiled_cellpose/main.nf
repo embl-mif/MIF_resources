@@ -68,7 +68,7 @@ workflow {
 
                 tile_size_x      : tile_size_x ? tile_size_x as int : 512,
                 tile_size_y      : tile_size_y ? tile_size_y as int : 512,
-                tile_size_z      : tile_size_z ? tile_size_z as int : null,
+                tile_size_z      : tile_size_z ? tile_size_z as int : 512,
                 tile_overlap     : tile_overlap ? tile_overlap as float : 32,
                 resolution_level : resolution_level ? resolution_level as int : null,
                 x_min            : x_min ? x_min as float : null,
