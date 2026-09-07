@@ -5,21 +5,40 @@ import java.security.MessageDigest
 
 class Utils {
     static String serializeMobieInputUri(def image, Path tableDir) {
-        def inputUri
-        if (image instanceof java.nio.file.Path) {
-            def imageAbs = image.toAbsolutePath().normalize()
-            try {
-                inputUri = tableDir.relativize(imageAbs).toString()
-            } catch (Exception _ignored) {
-                // Fall back to absolute URI when paths are not relativizable (e.g. different roots).
-                inputUri = imageAbs.toString()
-            }
-        } else {
-            // URI inputs are already the desired serialized representation.
-            inputUri = image.toString()
+        if (image == null) {
+            return ""
         }
 
-        return inputUri
+        Path imagePath = null
+        if (image instanceof java.nio.file.Path) {
+            imagePath = image
+        } else {
+            def text = image.toString().trim()
+            if (!text) {
+                return ""
+            }
+
+            // Preserve URI-like values (e.g. https://..., s3://...) as-is.
+            if (!(text ==~ /^[A-Za-z][A-Za-z0-9+.-]*:\/\/.*/)) {
+                try {
+                    imagePath = Paths.get(text)
+                } catch (Exception _ignored) {
+                    // Not a valid local filesystem path; keep original text.
+                }
+            }
+
+            if (imagePath == null) {
+                return text
+            }
+        }
+
+        def imageAbs = imagePath.toAbsolutePath().normalize()
+        try {
+            return tableDir.relativize(imageAbs).toString()
+        } catch (Exception _ignored) {
+            // Fall back to absolute path when paths are not relativizable (e.g. different roots).
+            return imageAbs.toString()
+        }
     }
 
     static String normalizeQuotedCsvText(def value) {
@@ -228,6 +247,19 @@ class Utils {
             throw new IllegalArgumentException("No such file or directory: ${resolvedPath}")
         }
         return resolvedPath
+    }
+
+    // resolvePath returns either a resolved local Path or an untouched http(s) URI String
+    // (see above). A `path()` process input must never receive that URI String directly --
+    // Nextflow would try to stage it by downloading exactly that URI as one foreign file,
+    // which fails for OME-Zarr stores (they're a directory of many objects, not one
+    // downloadable file). Split the value into a `path`-safe slot (the real file, or
+    // noFileSentinel when there is none) and a `val`-safe slot (the raw URI, or '' when
+    // there is none) so a process can accept either kind without Nextflow attempting to
+    // stage a store URL.
+    static List splitImageInput(def image, def noFileSentinel) {
+        def isRemote = (image instanceof String)
+        return [isRemote ? noFileSentinel : image, isRemote ? image : '']
     }
 
     static List<Integer> parseIndexList(def value, String columnName) {
