@@ -86,6 +86,11 @@ process CELLPOSE_SAM_ZARR_MIF {
     def halo_arg = Utils.optionalCliArg("--halo", meta.halo)
     def resolution_level_arg = Utils.optionalCliArg("--resolution-level", meta.resolution_level)
     def use_physical_units_arg = meta.use_physical_units ? "--use-physical-units" : ""
+    def diameter_arg = Utils.optionalCliArg("--diameter", meta.diameter)
+    def niter_arg = Utils.optionalCliArg("--niter", meta.niter)
+    def flow_threshold_arg = Utils.optionalCliArg("--flow_threshold", meta.flow_threshold)
+    def cellprob_threshold_arg = Utils.optionalCliArg("--cellprob_threshold", meta.cellprob_threshold)
+    def do_3D_arg = "--do_3D ${meta.do_3D}"
     def args = task.ext.args ?: ''
 
     """
