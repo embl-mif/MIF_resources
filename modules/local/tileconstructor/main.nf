@@ -11,7 +11,7 @@ process TILE_CONSTRUCTOR {
     tuple val(meta), path("*_tiles.csv"), emit: tiles
 
     script:
-    def image = image_uri ?: local_image
+    def image = image_uri
     def output_csv = "${meta.id}_tiles.csv"
     def resolution_level_arg = meta.resolution_level != null ? "--resolution-level ${meta.resolution_level}" : ""
     def tile_size_x_arg = meta.tile_size_x != null ? "--tile-size-x ${meta.tile_size_x}" : ""
@@ -26,10 +26,6 @@ process TILE_CONSTRUCTOR {
     def z_min_arg = meta.z_min != null ? "--z-min ${meta.z_min}" : ""
     def z_max_arg = meta.z_max != null ? "--z-max ${meta.z_max}" : ""
     def use_physical_units_arg = meta.use_physical_units ? "--use-physical-units" : ""
-
-    if (meta.tile_size_x == null || meta.tile_size_y == null) {
-        throw new IllegalArgumentException("tile_size_x and tile_size_y are required in meta for TILE_CONSTRUCTOR")
-    }
 
     """
     tile_constructor.py \\
@@ -52,7 +48,7 @@ process TILE_CONSTRUCTOR {
     """
 
     stub:
-    def image = image_uri ?: local_image
+    def image = image_uri
     def output_csv = "${meta.id}_tiles.csv"
     """
     cat > ${output_csv} <<-END_TILE_CSV
