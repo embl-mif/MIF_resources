@@ -367,9 +367,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-image-path", type=str, required=True)
     parser.add_argument("--output-csv", type=str, required=True)
 
-    parser.add_argument("--tile-size-x", type=float, required=None, help="Tile size along x. If omitted, derived from the input store's own chunk "
+    parser.add_argument("--tile-size-x", type=float, default=None, help="Tile size along x. If omitted, derived from the input store's own chunk "
         "shape at --resolution-level.",)
-    parser.add_argument("--tile-size-y", type=float, required=None, ,
+    parser.add_argument("--tile-size-y", type=float, default=None,
         help="Tile size along y. If omitted, derived from the input store's own chunk "
         "shape at --resolution-level.",)
     parser.add_argument("--tile-size-z", type=float, default=None, help="Tile size along z, when the input has a z axis. If omitted, derived from "
