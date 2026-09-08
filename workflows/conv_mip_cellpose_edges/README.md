@@ -62,10 +62,6 @@ Converted datasets are written to:
 <outdir>/zarr/<output basename>
 ```
 
-The MIP and Cellpose modules emit their OME-Zarr directories as Nextflow
-channels. Unless a `publishDir` rule is configured for those processes, their
-artifacts remain in the Nextflow work directory.
-
 ## Running the workflow
 
 The workflow configuration is set up for the EMBL Heidelberg Slurm cluster and

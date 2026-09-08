@@ -8,7 +8,7 @@ include { TILE_CONSTRUCTOR              } from '../../modules/local/tileconstruc
 include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
 workflow {
-    def zarr_dir = "${file(params.outdir)}/zarr"
+    def outdir = "${file(params.outdir)}"
     def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
     input_csv_ch = Channel
@@ -54,13 +54,13 @@ workflow {
                 : false
 
             def resolved_zarr_output =
-                "${zarr_dir}/${file(row.output).name}"
+                "${outdir}/${file(row.output).name}"
             
             def labels_output_value = row.labels_output?.toString()?.trim()
             def labels_output_name = labels_output_value
                 ? file(labels_output_value).name
                 : "${dataset_id}_labels.ome.zarr"
-            def resolved_labels_output = "${zarr_dir}/${labels_output_name}"
+            def resolved_labels_output = "${outdir}/${labels_output_name}"
 
             def meta = row + [
                 id                       : dataset_id,
@@ -113,7 +113,7 @@ workflow {
                     z_min              : row.z_min ? row.z_min as Integer : null,
                     z_max              : row.z_max ? row.z_max as Integer : null,
 
-                    labels_output_name : "${zarr_dir}/${row.dataset_id}_labels.ome.zarr"
+                    labels_output_name : "${outdir}/${row.dataset_id}_labels.ome.zarr"
                 ]
 
                 tuple(tile_meta, meta.zarr_output_name)

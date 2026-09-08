@@ -7,14 +7,18 @@ include { PYMIF_MIP_ZARR                } from '../../modules/local/pymif_mip_za
 include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
 workflow {
-    def zarr_dir = "${file(params.outdir)}/zarr"
+    def outdir = "${file(params.outdir)}"
+    def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
     input_csv_ch = Channel
         .fromPath(params.input_csv, checkIfExists: true)
 
     pymif_inputs_ch = input_csv_ch
         .splitCsv(header: true)
-        .map { row, index ->
+        .map { row ->
+
+            def index = row_index.getAndIncrement()
+    
             def input_dataset = file(row.input, checkIfExists: true)
 
             def dataset_id = row.dataset_id?.toString()?.trim()
@@ -25,19 +29,19 @@ workflow {
             def cellpose_channels = row.cellpose_channels?.toString()?.trim()
 
             def resolved_zarr_output =
-                "${zarr_dir}/${file(row.output).name}"
-            
+                "${outdir}/${file(row.output).name}"
+
             def labels_mip_value = row.mip_output?.toString()?.trim()
             def labels_mip_name = labels_mip_value
                 ? file(labels_mip_value).name
                 : "${dataset_id}_mip.ome.zarr"
-            def resolved_mip_output = "${zarr_dir}/${labels_mip_name}"
+            def resolved_mip_output = "${outdir}/${labels_mip_name}"
 
             def labels_output_value = row.labels_output?.toString()?.trim()
             def labels_output_name = labels_output_value
                 ? file(labels_output_value).name
                 : "${dataset_id}_labels.ome.zarr"
-            def resolved_labels_output = "${zarr_dir}/${labels_output_name}"
+            def resolved_labels_output = "${outdir}/${labels_output_name}"
 
             def meta = row + [
                 id                       : dataset_id,
