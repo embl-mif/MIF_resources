@@ -78,7 +78,7 @@ workflow {
                 diameter                 : diameter_value ? diameter_value as int : null,
                 niter                    : niter_value ? niter_value as int : null,
                 segmentation_channels    : cellpose_channels ?: null,
-                cellpose_halo            : cellpose_halo != null && cellpose_halo != '' ? cellpose_halo as float : 20.0,
+                halo                     : cellpose_halo != null && cellpose_halo != '' ? cellpose_halo as float : 20.0,
                 do_3D                    : do_3D_value
             ]
 
