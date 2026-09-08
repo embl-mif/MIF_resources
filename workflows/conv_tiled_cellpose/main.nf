@@ -3,7 +3,6 @@
 nextflow.enable.dsl = 2
 
 include { PYMIF_CONVERSION              } from '../../modules/local/pymif_conversion/main'
-include { TILECONSTRUCTOR_INPUT_PREP    } from '../../modules/local/tileconstructor_input_prep/main'
 include { TILE_CONSTRUCTOR              } from '../../modules/local/tileconstructor/main'
 include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
@@ -11,66 +10,62 @@ workflow {
     def zarr_dir = "${file(params.outdir)}/zarr"
     def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
+    ch_cellpose_model = Channel.value(
+        params.cellpose_model_path
+            ? file(params.cellpose_model_path, checkIfExists: true)
+            : file("${workflow.projectDir}/assets/NO_MODEL_FILE")
+    )
+
     input_csv_ch = Channel
         .fromPath(params.input_csv, checkIfExists: true)
 
     pymif_inputs_ch = input_csv_ch
         .splitCsv(header: true)
         .map { row ->
-
             def index = row_index.getAndIncrement()
-
             // Read the input dataset and prepare metadata for processing
             def input_dataset = file(row.input, checkIfExists: true)
-
-            def dataset_id = row.dataset_id?.toString()?.trim()
+            def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
                 ?: "${input_dataset.simpleName}_${index + 1}"
 
-            // Read optional parameters for tiling
-            def tile_size_x = row.tile_size_x?.toString()?.trim()
-            def tile_size_y = row.tile_size_y?.toString()?.trim()
-            def tile_size_z = row.tile_size_z?.toString()?.trim()
-            def tile_overlap = row.tile_overlap?.toString()?.trim()
-            def resolution_level = row.resolution_level?.toString()?.trim()
-            def x_min = row.x_min?.toString()?.trim()
-            def x_max = row.x_max?.toString()?.trim()
-            def y_min = row.y_min?.toString()?.trim()
-            def y_max = row.y_max?.toString()?.trim()
-            def z_min = row.z_min?.toString()?.trim()
-            def z_max = row.z_max?.toString()?.trim()
-            def t_min = row.t_min?.toString()?.trim()
-            def t_max = row.t_max?.toString()?.trim()
-            def use_physical_units = row.use_physical_units?.toString()?.trim()
+            def tile_size_x = Utils.normalizeOptionalText(row.tile_size_x)
+            def tile_size_y = Utils.normalizeOptionalText(row.tile_size_y)
+            def tile_size_z = Utils.normalizeOptionalText(row.tile_size_z)
+            def tile_overlap = Utils.normalizeOptionalText(row.tile_overlap)
+            def resolution_level = Utils.normalizeOptionalText(row.resolution_level)
+            def x_min = Utils.normalizeOptionalText(row.x_min)
+            def x_max = Utils.normalizeOptionalText(row.x_max)
+            def y_min = Utils.normalizeOptionalText(row.y_min)
+            def y_max = Utils.normalizeOptionalText(row.y_max)
+            def z_min = Utils.normalizeOptionalText(row.z_min)
+            def z_max = Utils.normalizeOptionalText(row.z_max)
+            def t_min = Utils.normalizeOptionalText(row.t_min)
+            def t_max = Utils.normalizeOptionalText(row.t_max)
+            def use_physical_units = Utils.normalizeOptionalText(row.use_physical_units)
 
-            // Read optional parameters for Cellpose processing
-            def diameter_value = row.cellpose_diameter?.toString()?.trim()
-            def niter_value = row.cellpose_niter?.toString()?.trim()
-            def cellpose_channels = row.cellpose_channels?.toString()?.trim()
-            def cellpose_halo = row.cellpose_halo?.toString()?.trim()
+            def diameter_value = Utils.normalizeOptionalText(row.cellpose_diameter)
+            def niter_value = Utils.normalizeOptionalText(row.cellpose_niter)
+            def cellpose_channels = Utils.normalizeOptionalText(row.cellpose_channels)
+            def cellpose_halo = Utils.normalizeOptionalText(row.cellpose_halo)
 
-            def do_3D_text = row.do_3D?.toString()?.trim()
+            def do_3D_text = Utils.normalizeOptionalText(row.do_3D)
             def do_3D_value = do_3D_text
                 ? do_3D_text.equalsIgnoreCase('true')
                 : false
 
             def resolved_zarr_output =
                 "${zarr_dir}/${file(row.output).name}"
-            
-            def labels_output_value = row.labels_output?.toString()?.trim()
-            def labels_output_name = labels_output_value
-                ? file(labels_output_value).name
-                : "${dataset_id}_labels.ome.zarr"
-            def resolved_labels_output = "${zarr_dir}/${labels_output_name}"
-
             def meta = row + [
                 id                       : dataset_id,
                 zarr_output_name         : resolved_zarr_output,
 
-                tile_size_x      : tile_size_x ? tile_size_x as int : 512,
-                tile_size_y      : tile_size_y ? tile_size_y as int : 512,
-                tile_size_z      : tile_size_z ? tile_size_z as int : 512,
-                tile_overlap     : tile_overlap ? tile_overlap as float : 32,
-                resolution_level : resolution_level ? resolution_level as int : null,
+                tile_size_x      : tile_size_x ? tile_size_x as int : null,
+                tile_size_y      : tile_size_y ? tile_size_y as int : null,
+                tile_size_z      : tile_size_z ? tile_size_z as int : null,
+                tile_overlap     : tile_overlap ? tile_overlap as float : null,
+                resolution_level      : resolution_level
+                    ? resolution_level as int
+                    : (params.resolution_level != null ? params.resolution_level as int : null),
                 x_min            : x_min ? x_min as float : null,
                 x_max            : x_max ? x_max as float : null,
                 y_min            : y_min ? y_min as float : null,
@@ -80,8 +75,6 @@ workflow {
                 t_min            : t_min != null && t_min != '' ? t_min as int : null,
                 t_max            : t_max != null && t_max != '' ? t_max as int : null,
                 use_physical_units: use_physical_units ? use_physical_units.toBoolean() : false,
-
-                labels_output_name       : resolved_labels_output,
                 diameter                 : diameter_value ? diameter_value as int : null,
                 niter                    : niter_value ? niter_value as int : null,
                 segmentation_channels    : cellpose_channels ?: null,
@@ -112,13 +105,14 @@ workflow {
                     y_max              : row.y_max as Integer,
                     z_min              : row.z_min ? row.z_min as Integer : null,
                     z_max              : row.z_max ? row.z_max as Integer : null,
-
-                    labels_output_name : "${zarr_dir}/${row.dataset_id}_labels.ome.zarr"
                 ]
-
-                tuple(tile_meta, meta.zarr_output_name)
+                def (local_image, image_uri) = Utils.splitImageInput(
+                    meta.zarr_output_name,
+                    file("${workflow.projectDir}/assets/NO_FILE")
+                )
+                tuple(tile_meta, local_image, image_uri)
             }
         }
-    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs)
+    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs, ch_cellpose_model)
 }
 
