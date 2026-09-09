@@ -7,13 +7,17 @@ include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam
 
 workflow {
     def zarr_dir = "${file(params.outdir)}/zarr"
-    def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
+    if (!params.cellpose_direct_output_dir) {
+        params.cellpose_direct_output_dir = "${file(params.outdir)}/labels"
+    }
 
     ch_cellpose_model = Channel.value(
         params.cellpose_model_path
             ? file(params.cellpose_model_path, checkIfExists: true)
             : file("${workflow.projectDir}/assets/NO_MODEL_FILE")
     )
+
+    def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
     input_csv_ch = Channel
         .fromPath(params.input_csv, checkIfExists: true)
