@@ -22,7 +22,7 @@ def _detect_input_zarr_format(root) -> int:
 def build_skeleton(input_path: str, output_path: str, dtype: str,
                     num_channels: int | None, channel_labels: list[str] | None,
                     zarr_format: int | None, data_type: str | None,
-                    t_min: int | None, t_max: int | None):
+                    t_min: int | None, t_max: int | None, num_levels: int | None = None):
     src_group = zarr.open(input_path, mode="r")
     zattrs = dict(src_group.attrs)
     multiscales = zattrs.get("multiscales", [])
@@ -54,6 +54,16 @@ def build_skeleton(input_path: str, output_path: str, dtype: str,
         zarr_format = _detect_input_zarr_format(src_group)
 
     datasets = multiscales[0]["datasets"]
+    if num_levels is not None:
+        if num_levels < 1:
+            raise ValueError(f"--num-levels must be >= 1, got {num_levels}")
+        if num_levels > len(datasets):
+            raise ValueError(
+                f"--num-levels {num_levels} exceeds the input's own {len(datasets)} "
+                "pyramid level(s)."
+            )
+        datasets = datasets[:num_levels]
+        zattrs["multiscales"][0]["datasets"] = datasets
     level_paths = [ds["path"] for ds in datasets]
 
     if t_axis_index is not None:
@@ -152,6 +162,14 @@ def main():
     parser.add_argument("--t-max", type=int, default=None,
                          help="Last timepoint index to include (exclusive). Defaults to the "
                               "input's full time extent.")
+    parser.add_argument("--num-levels", type=int, default=None,
+                         help="Restrict the output to the first N pyramid levels (e.g. 1 for a "
+                              "single-resolution-level store with no downsampled levels at all). "
+                              "Omit to build the full pyramid matching the input's own level "
+                              "count. Use 1 for a store that many independent tasks will each "
+                              "write one disjoint region into (e.g. a stitched multi-tile label "
+                              "merge target) -- a partial/inconsistent pyramid there would be "
+                              "actively wrong, not just unused.")
     args = parser.parse_args()
     channel_labels = args.channel_labels.split(",") if args.channel_labels else None
     if channel_labels and args.num_channels is None:
@@ -159,10 +177,12 @@ def main():
     if channel_labels and len(channel_labels) != args.num_channels:
         parser.error(f"--channel-labels has {len(channel_labels)} entries, "
                      f"but --num-channels is {args.num_channels}")
+    if args.num_levels is not None and args.num_levels < 1:
+        parser.error(f"--num-levels must be >= 1, got {args.num_levels}")
 
     build_skeleton(args.input_zarr, args.output_zarr, args.dtype,
                     args.num_channels, channel_labels, args.zarr_format, args.data_type,
-                    args.t_min, args.t_max)
+                    args.t_min, args.t_max, args.num_levels)
     print(f"[Prealloc] Done: {args.output_zarr}")
 
 
