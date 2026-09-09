@@ -22,6 +22,7 @@ process PREALLOCATE_ZARR {
     def data_type_arg      = meta.data_type      != null ? "--data-type ${meta.data_type}" : ""
     def t_min_arg          = meta.t_min          != null ? "--t-min ${meta.t_min}" : ""
     def t_max_arg          = meta.t_max          != null ? "--t-max ${meta.t_max}" : ""
+    def num_levels_arg     = meta.num_levels     != null ? "--num-levels ${meta.num_levels}" : ""
     """
     preallocate_zarr.py \\
         --input-zarr "${input_zarr}" \\
@@ -33,6 +34,7 @@ process PREALLOCATE_ZARR {
         ${data_type_arg} \\
         ${t_min_arg} \\
         ${t_max_arg} \\
+        ${num_levels_arg} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml
