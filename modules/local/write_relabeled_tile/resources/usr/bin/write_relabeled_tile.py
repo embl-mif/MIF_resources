@@ -2,10 +2,10 @@
 
 """Relabel one tile's segmentation with the global multicut mapping and
 write its non-overlapping core region into the shared merged OME-Zarr store
-(Module 6b: WRITE_RELABELED_TILE).
+(WRITE_RELABELED_TILE).
 
 Runs once per tile, in parallel across every tile of the same source image,
-each writing into a disjoint region of the store `PREALLOCATE_EMPTY_ZARR`
+each writing into a disjoint region of the store `PREALLOCATE_ZARR`
 already created. A tile's own zarr array is already cropped back to its
 base ROI by `CELLPOSE_SAM_ZARR` (halo is read-context only, see
 `workflow_notes.md`), so this only needs to trim the *shared* band with
@@ -14,16 +14,69 @@ earlier tile along each axis (`--has-right`/`--has-bottom`/`--has-behind`
 say whether this tile *is* an earlier tile on that axis), never split, so
 no double-writes happen without needing any inter-tile coordination beyond
 what's already in `tile_neighbors.csv`.
+
+The write step reads the target store's own level-0 dataset path off its
+on-disk attrs rather than assuming a fixed name (e.g. "s0") -- this store is
+now always built by `preallocate_zarr.py --shape/--axes/--scale/--chunks
+--translation` (mode 2, single-level; the old bespoke OMEZarrStore-based
+preallocate_empty_zarr.py is retired), whose ngio-built naming mirrors
+whatever axis/level naming the caller gave it and may nest multiscales
+under an "ome" key for NGFF v0.5. Only the chunk-alignment helpers from
+`ome_zarr_store.py` are reused here -- the `OMEZarrStore` class itself is
+not, since its `.create()`-built layout is no longer the only supported
+skeleton.
 """
 
 import argparse
 import json
 
 import numpy as np
+import zarr
 
-from preallocate_empty_zarr import _read_tile_rows, compute_output_geometry
+from zarr_tile_utils import _read_tile_rows, compute_output_geometry
 from label_matching import _load_full, _offset_labels, relabel_segmentation
-from ome_zarr_store import OMEZarrStore
+from ome_zarr_store import check_grid_alignment, make_slice, storage_grid
+
+
+def _multiscales_datasets(attrs) -> list[dict]:
+    """Return the "datasets" list from a store's multiscales metadata,
+    handling both the flat layout ome_zarr_store.py writes (multiscales at
+    the attrs top level, both NGFF versions) and the NGFF v0.5-spec layout
+    a real OME-Zarr library like ngio may write (multiscales nested under
+    an "ome" key) -- same dual-handling precedent as
+    `cellpose_sam_zarr.py`'s own `detect_ome_zarr_version`.
+    """
+    ome = attrs.get("ome")
+    if isinstance(ome, dict) and "multiscales" in ome:
+        multiscales = ome["multiscales"]
+    else:
+        multiscales = attrs.get("multiscales")
+
+    if not multiscales:
+        raise ValueError("Target store has no 'multiscales' metadata (checked both "
+                          "top-level and 'ome'-nested locations).")
+
+    return multiscales[0]["datasets"]
+
+
+def _write_core_region(store_path: str, position: tuple[int, ...], data: np.ndarray) -> None:
+    """Open the target store's level-0 array and write `data` at `position`,
+    after checking the write lands on the array's own storage grid (see
+    `check_grid_alignment` -- the boundary tile at each axis' true edge is
+    exempted automatically, same rule `OMEZarrStore.write` enforced)."""
+    root = zarr.open(store_path, mode="a")
+    level0_path = _multiscales_datasets(root.attrs)[0]["path"]
+    array = root[level0_path]
+
+    shape = data.shape
+    if not check_grid_alignment(position, shape, storage_grid(array), array.shape):
+        raise ValueError(
+            f"Tile write at position={position} shape={shape} is not aligned to the "
+            f"storage grid of '{level0_path}' (grid={storage_grid(array)}, "
+            f"array shape={array.shape})."
+        )
+
+    array[make_slice(position, shape)] = data
 
 
 def _core_region(size: int, step: int, has_forward_neighbor: bool) -> tuple[slice, int]:
@@ -119,8 +172,7 @@ def main() -> None:
     _axis_order, _shape, _chunks, global_min = compute_output_geometry(rows)
     position = tuple(start - origin for start, origin in zip(starts, global_min))
 
-    store = OMEZarrStore(args.store_path, mode="a")
-    store.write(level=0, position=position, data=core.astype(np.uint32), check_alignment=True)
+    _write_core_region(args.store_path, position, core.astype(np.uint32))
 
     with open(args.output, "w", encoding="utf-8") as handle:
         handle.write(args.store_path)
@@ -130,4 +182,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
