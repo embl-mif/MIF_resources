@@ -7,7 +7,7 @@ process PYMIF_CONVERSION {
     tuple val(meta), path(input_dataset)
 
     output:
-    tuple val(meta), val(meta.zarr_output_name), emit: zarr
+    tuple val(meta), path(meta.zarr_output_name), emit: zarr
     path "versions.yml"                  , emit: versions
 
     when:
