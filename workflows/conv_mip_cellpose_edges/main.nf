@@ -94,7 +94,7 @@ workflow {
     ch_cellpose_inputs = PYMIF_MIP_ZARR.out.zarr
         .map { meta, zarr_path ->
             def (local_image, image_uri) = Utils.splitImageInput(
-                zarr_path,
+                meta.labels_output_name,
                 file("${workflow.projectDir}/assets/NO_FILE")
             )
             tuple(meta, local_image, image_uri)
