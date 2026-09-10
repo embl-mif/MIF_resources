@@ -52,10 +52,11 @@ workflow {
                 ? do_3D_text.equalsIgnoreCase('true')
                 : false
             def labels_output_value = Utils.normalizeOptionalText(row.labels_output)
-            def labels_output_name = labels_output_value
-                ? file(labels_output_value).name
-                : "${dataset_id}_labels.ome.zarr"
-            def resolved_labels_output = "${outdir}/${labels_output_name}"
+            def resolved_labels_output = labels_output_value
+                ? (file(labels_output_value).isAbsolute()
+                    ? labels_output_value                    // abs path: keep as given
+                    : file(labels_output_value).name)        // relative: strip to bare filename
+                : "${dataset_id}_labels.ome.zarr"             // not provided: default
 
             def meta = row + [
                 id                       : dataset_id,
@@ -99,7 +100,7 @@ workflow {
             )
             tuple(meta, local_image, image_uri)
         }
-    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs, ch_cellpose_model)
 
+    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs, ch_cellpose_model)
 }
 

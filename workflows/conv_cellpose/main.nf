@@ -49,7 +49,12 @@ workflow {
             def labels_output_name = labels_output_value
                 ? file(labels_output_value).name
                 : "${dataset_id}_labels.ome.zarr"
-            def resolved_labels_output = "${outdir}/${labels_output_name}"
+            def labels_output_value = Utils.normalizeOptionalText(row.labels_output)
+            def resolved_labels_output = labels_output_value
+                ? (file(labels_output_value).isAbsolute()
+                    ? labels_output_value                    // abs path: keep as given
+                    : file(labels_output_value).name)        // relative: strip to bare filename
+                : "${dataset_id}_labels.ome.zarr"             // not provided: default
 
             def meta = row + [
                 id                    : dataset_id,
@@ -77,7 +82,7 @@ workflow {
     ch_cellpose_inputs = PYMIF_CONVERSION.out.zarr
         .map { meta, zarr_path ->
             def (local_image, image_uri) = Utils.splitImageInput(
-                meta.labels_output_name,
+                zarr_path,
                 file("${workflow.projectDir}/assets/NO_FILE")
             )
             tuple(meta, local_image, image_uri)
