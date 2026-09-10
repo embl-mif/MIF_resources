@@ -61,7 +61,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     path(pretrained_cellpose_model)
 
     output:
-    tuple val(meta), path("*.ome.zarr", optional:true), emit: labels
+    tuple val(meta), path(output_zarr, optional:true), emit: labels
 
     script:
     def image = image_uri ?: local_image
