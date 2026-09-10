@@ -8,6 +8,16 @@ include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam
 
 workflow {
     def outdir = "${file(params.outdir)}"
+    // if (!params.cellpose_direct_output_dir) {
+    //     params.cellpose_direct_output_dir = "${file(params.outdir)}/labels"
+    // }
+
+    ch_cellpose_model = Channel.value(
+        params.cellpose_model_path
+            ? file(params.cellpose_model_path, checkIfExists: true)
+            : file("${workflow.projectDir}/assets/NO_MODEL_FILE")
+    )
+
     def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
     input_csv_ch = Channel
@@ -24,20 +34,26 @@ workflow {
             def dataset_id = row.dataset_id?.toString()?.trim()
                 ?: "${input_dataset.simpleName}_${index + 1}"
 
-            def diameter_value = row.cellpose_diameter?.toString()?.trim()
-            def niter_value = row.cellpose_niter?.toString()?.trim()
-            def cellpose_channels = row.cellpose_channels?.toString()?.trim()
-
             def resolved_zarr_output =
                 "${outdir}/${file(row.output).name}"
 
-            def labels_mip_value = row.mip_output?.toString()?.trim()
+            def labels_mip_value = Utils.normalizeOptionalText(row.mip_output)
             def labels_mip_name = labels_mip_value
                 ? file(labels_mip_value).name
                 : "${dataset_id}_mip.ome.zarr"
             def resolved_mip_output = "${outdir}/${labels_mip_name}"
 
-            def labels_output_value = row.labels_output?.toString()?.trim()
+            def diameter_value = Utils.normalizeOptionalText(row.cellpose_diameter)
+            def niter_value = Utils.normalizeOptionalText(row.cellpose_niter)
+            def cellpose_channels = Utils.normalizeOptionalText(row.cellpose_channels)
+            def cellpose_halo = Utils.normalizeOptionalText(row.cellpose_halo)
+            def resolution_level = Utils.normalizeOptionalText(row.resolution_level)
+            def use_physical_units = Utils.normalizeOptionalText(row.use_physical_units)
+            def do_3D_text = Utils.normalizeOptionalText(row.do_3D)
+            def do_3D_value = do_3D_text
+                ? do_3D_text.equalsIgnoreCase('true')
+                : false
+            def labels_output_value = Utils.normalizeOptionalText(row.labels_output)
             def labels_output_name = labels_output_value
                 ? file(labels_output_value).name
                 : "${dataset_id}_labels.ome.zarr"
@@ -46,11 +62,21 @@ workflow {
             def meta = row + [
                 id                       : dataset_id,
                 zarr_output_name         : resolved_zarr_output,
+
                 mip_output_name          : resolved_mip_output,
-                labels_output_name       : resolved_labels_output,
-                diameter                 : diameter_value ? diameter_value as int : null,
-                niter                    : niter_value ? niter_value as int : null,
-                segmentation_channels    : cellpose_channels ?: null
+
+                diameter              : diameter_value ? diameter_value as int : null,
+                niter                 : niter_value ? niter_value as int : null,
+                segmentation_channels : cellpose_channels ?: null,
+                halo                  : cellpose_halo != null && cellpose_halo != ''
+                    ? cellpose_halo as float
+                    : (params.cellpose_halo != null ? params.cellpose_halo as float : 20.0),
+                resolution_level      : resolution_level
+                    ? resolution_level as int
+                    : (params.resolution_level != null ? params.resolution_level as int : null),
+                use_physical_units    : use_physical_units ? use_physical_units.toBoolean() : false,
+                do_3D                 : do_3D_value,
+                labels_output_name    : resolved_labels_output
             ]
 
             tuple(meta, input_dataset)
@@ -67,7 +93,15 @@ workflow {
      */
     PYMIF_MIP_ZARR(PYMIF_CONVERSION.out.zarr)
 
-    CELLPOSE_SAM_ZARR_MIF(PYMIF_MIP_ZARR.out.zarr)
+    ch_cellpose_inputs = PYMIF_MIP_ZARR.out.zarr
+        .map { meta, zarr_path ->
+            def (local_image, image_uri) = Utils.splitImageInput(
+                zarr_path,
+                file("${workflow.projectDir}/assets/NO_FILE")
+            )
+            tuple(meta, local_image, image_uri)
+        }
+    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs, ch_cellpose_model)
 
 }
 
