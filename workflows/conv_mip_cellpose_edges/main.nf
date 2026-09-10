@@ -8,9 +8,6 @@ include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam
 
 workflow {
     def outdir = "${file(params.outdir)}"
-    // if (!params.cellpose_direct_output_dir) {
-    //     params.cellpose_direct_output_dir = "${file(params.outdir)}/labels"
-    // }
 
     ch_cellpose_model = Channel.value(
         params.cellpose_model_path
@@ -32,8 +29,12 @@ workflow {
             def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
                 ?: "${input_dataset.simpleName}_${index + 1}"
 
-            def resolved_zarr_output =
-                "${outdir}/${file(row.output).name}"
+            def zarr_output_value = Utils.normalizeOptionalText(row.output)
+            def resolved_zarr_output = zarr_output_value
+                ? (file(zarr_output_value).isAbsolute()
+                    ? zarr_output_value                    // abs path: keep as given
+                    : file(zarr_output_value).name)        // relative: bare filename -> lands in workDir
+                : "${dataset_id}.ome.zarr"                 // not provided: default in workDir
 
             def labels_mip_value = Utils.normalizeOptionalText(row.mip_output)
             def labels_mip_name = labels_mip_value
@@ -83,24 +84,25 @@ workflow {
 
     PYMIF_CONVERSION(pymif_inputs_ch)
 
-    /*
-     * Creates a multiscale 2D OME-Zarr by applying max() over Z at every
-     * resolution level.
-     *
-     * Expected output:
-     * tuple(meta, mip_zarr)
-     */
-    PYMIF_MIP_ZARR(PYMIF_CONVERSION.out.zarr)
+    // /*
+    //  * Creates a multiscale 2D OME-Zarr by applying max() over Z at every
+    //  * resolution level.
+    //  *
+    //  * Expected output:
+    //  * tuple(meta, mip_zarr)
+    //  */
+    // PYMIF_MIP_ZARR(PYMIF_CONVERSION.out.zarr)
 
-    ch_cellpose_inputs = PYMIF_MIP_ZARR.out.zarr
-        .map { meta, zarr_path ->
-            def (local_image, image_uri) = Utils.splitImageInput(
-                zarr_path,
-                file("${workflow.projectDir}/assets/NO_FILE")
-            )
-            tuple(meta, local_image, image_uri)
-        }
+    // ch_cellpose_inputs = PYMIF_MIP_ZARR.out.zarr
+    //     .map { meta, zarr_path ->
+    //         def (local_image, image_uri) = Utils.splitImageInput(
+    //             zarr_path,
+    //             file("${workflow.projectDir}/assets/NO_FILE")
+    //         )
+    //         tuple(meta, local_image, image_uri)
+    //     }
 
-    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs, ch_cellpose_model)
+    // CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs, ch_cellpose_model)
+
 }
 
