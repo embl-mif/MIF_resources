@@ -26,12 +26,10 @@ workflow {
     pymif_inputs_ch = input_csv_ch
         .splitCsv(header: true)
         .map { row ->
-
             def index = row_index.getAndIncrement()
-    
             def input_dataset = file(row.input, checkIfExists: true)
 
-            def dataset_id = row.dataset_id?.toString()?.trim()
+            def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
                 ?: "${input_dataset.simpleName}_${index + 1}"
 
             def resolved_zarr_output =
