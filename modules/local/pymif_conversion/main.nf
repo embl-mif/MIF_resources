@@ -7,13 +7,14 @@ process PYMIF_CONVERSION {
     tuple val(meta), path(input_dataset)
 
     output:
-    tuple val(meta), path(meta.zarr_output_name), emit: zarr
+    tuple val(meta), path(output_zarr), emit: zarr
     path "versions.yml"                  , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
+    def output_zarr = meta.zarr_output_name
     def args = task.ext.args ?: ''
 
     def isPresent = { value ->
@@ -80,10 +81,10 @@ process PYMIF_CONVERSION {
     def command = commandParts.join(' ')
 
     """
-    if [ -d ${shellQuote(meta.zarr_output_name)} ] && [ -e ${shellQuote(meta.zarr_output_name)}/zarr.json -o -e ${shellQuote(meta.zarr_output_name)}/.zgroup ]; then
-        echo "Output already exists, skipping conversion: ${meta.zarr_output_name}"
+    if [ -d ${shellQuote(output_zarr)} ] && [ -e ${shellQuote(output_zarr)}/zarr.json -o -e ${shellQuote(output_zarr)}/.zgroup ]; then
+        echo "Output already exists, skipping conversion: ${output_zarr}"
     else
-        mkdir -p \$(dirname ${shellQuote(meta.zarr_output_name)})
+        mkdir -p \$(dirname ${shellQuote(output_zarr)})
         ${command} ${args}
     fi
 
@@ -95,7 +96,7 @@ process PYMIF_CONVERSION {
 
     stub:
     """
-    mkdir -p "${meta.zarr_output_name}"
+    mkdir -p "${output_zarr}"
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         pymif: "stub"
