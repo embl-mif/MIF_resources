@@ -7,14 +7,16 @@ process PYMIF_CONVERSION {
     tuple val(meta), path(input_dataset)
 
     output:
-    tuple val(meta), path(output_zarr), emit: zarr
+    tuple val(meta), val(output_zarr)    , emit: zarr
     path "versions.yml"                  , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
-    def output_zarr = meta.zarr_output_name
+    output_zarr = meta.zarr_output_name.toString().startsWith('/')
+        ? meta.zarr_output_name
+        : "${task.workDir}/${meta.zarr_output_name}"
     def args = task.ext.args ?: ''
 
     def isPresent = { value ->
@@ -37,7 +39,7 @@ process PYMIF_CONVERSION {
     def commandParts = [
         'pymif', '2zarr',
         '--input_path', shellQuote(meta.input),
-        '--zarr_path', shellQuote(meta.zarr_output_name)
+        '--zarr_path', shellQuote(output_zarr)
     ]
 
     if (isPresent(meta.microscope)) {
@@ -88,6 +90,11 @@ process PYMIF_CONVERSION {
         ${command} ${args}
     fi
 
+    if [ ! -e ${shellQuote(output_zarr)}/zarr.json ] && [ ! -e ${shellQuote(output_zarr)}/.zgroup ]; then
+        echo "ERROR: expected zarr store not found: ${output_zarr}" >&2
+        exit 1
+    fi
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         pymif: \$(python -c 'import pymif; print(pymif.__version__)' 2>/dev/null || echo "unknown")
@@ -95,6 +102,9 @@ process PYMIF_CONVERSION {
     """
 
     stub:
+    output_zarr = meta.zarr_output_name.toString().startsWith('/')
+        ? meta.zarr_output_name
+        : "${task.workDir}/${meta.zarr_output_name}"
     """
     mkdir -p "${output_zarr}"
     cat <<-END_VERSIONS > versions.yml
