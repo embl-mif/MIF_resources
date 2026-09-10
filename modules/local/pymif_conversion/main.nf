@@ -7,17 +7,16 @@ process PYMIF_CONVERSION {
     tuple val(meta), path(input_dataset)
 
     output:
-    tuple val(meta), val(output_zarr)    , emit: zarr
+    tuple val(meta),  val("${task.workDir.resolve(output_zarr.toString())}")   , emit: zarr
     path "versions.yml"                  , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
-    output_zarr = meta.zarr_output_name.toString().startsWith('/')
-        ? meta.zarr_output_name
-        : "${task.workDir}/${meta.zarr_output_name}"
-    def args = task.ext.args ?: ''
+    output_zarr = meta.zarr_output_name
+
+	def args = task.ext.args ?: ''
 
     def isPresent = { value ->
         value != null &&
@@ -102,9 +101,7 @@ process PYMIF_CONVERSION {
     """
 
     stub:
-    output_zarr = meta.zarr_output_name.toString().startsWith('/')
-        ? meta.zarr_output_name
-        : "${task.workDir}/${meta.zarr_output_name}"
+    output_zarr = meta.zarr_output_name    
     """
     mkdir -p "${output_zarr}"
     cat <<-END_VERSIONS > versions.yml

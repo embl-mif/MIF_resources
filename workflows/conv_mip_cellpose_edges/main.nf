@@ -7,7 +7,6 @@ include { PYMIF_MIP_ZARR                } from '../../modules/local/pymif_mip_za
 include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
 workflow {
-    def outdir = "${file(params.outdir)}"
 
     ch_cellpose_model = Channel.value(
         params.cellpose_model_path
@@ -20,6 +19,11 @@ workflow {
     input_csv_ch = Channel
         .fromPath(params.input_csv, checkIfExists: true)
 
+    def resolveOutput = { value, fallback ->
+        def v = Utils.normalizeOptionalText(value)
+        !v ? fallback : (v.startsWith('/') ? v : file(v).name)
+    }
+
     pymif_inputs_ch = input_csv_ch
         .splitCsv(header: true)
         .map { row ->
@@ -29,18 +33,9 @@ workflow {
             def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
                 ?: "${input_dataset.simpleName}_${index + 1}"
 
-            def zarr_output_value = Utils.normalizeOptionalText(row.output)
-            def resolved_zarr_output = zarr_output_value
-                ? (file(zarr_output_value).isAbsolute()
-                    ? zarr_output_value                    // abs path: keep as given
-                    : file(zarr_output_value).name)        // relative: bare filename -> lands in workDir
-                : "${dataset_id}.ome.zarr"                 // not provided: default in workDir
+            def resolved_zarr_output = resolveOutput(row.output, "${dataset_id}.ome.zarr")
 
-            def labels_mip_value = Utils.normalizeOptionalText(row.mip_output)
-            def labels_mip_name = labels_mip_value
-                ? file(labels_mip_value).name
-                : "${dataset_id}_mip.ome.zarr"
-            def resolved_mip_output = "${outdir}/${labels_mip_name}"
+            def resolved_mip_output = resolveOutput(row.mip_output, "${dataset_id}_mip.ome.zarr")
 
             def diameter_value = Utils.normalizeOptionalText(row.cellpose_diameter)
             def niter_value = Utils.normalizeOptionalText(row.cellpose_niter)
@@ -50,16 +45,10 @@ workflow {
             def use_physical_units = Utils.normalizeOptionalText(row.use_physical_units)
             def do_3D_text = Utils.normalizeOptionalText(row.do_3D)
             def do_3D_value = do_3D_text
-                ? do_3D_text.equalsIgnoreCase('true')
-                : false
-            def labels_output_value = Utils.normalizeOptionalText(row.labels_output)
-            def resolved_labels_output = labels_output_value
-                ? (file(labels_output_value).isAbsolute()
-                    ? labels_output_value                    // abs path: keep as given
-                    : file(labels_output_value).name)        // relative: strip to bare filename
-                : "${dataset_id}_labels.ome.zarr"             // not provided: default
 
-            def meta = row + [
+            def resolved_labels_output = resolveOutput(row.labels_output, "${dataset_id}_labels.ome.zarr")
+
+            def meta = row + [			
                 id                       : dataset_id,
                 zarr_output_name         : resolved_zarr_output,
 
