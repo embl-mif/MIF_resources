@@ -61,7 +61,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     path(pretrained_cellpose_model)
 
     output:
-    tuple val(meta), path(output_zarr, optional: true), emit: labels
+    tuple val(meta), val("${task.workDir.resolve(output_zarr.toString())}"), emit: labels
 
     script:
     def image = image_uri ?: local_image
@@ -74,7 +74,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     // Nextflow "input file name collision" error.
     def cellpose_model_arg = pretrained_cellpose_model.name != 'NO_MODEL_FILE' ? "-m ${pretrained_cellpose_model}" : ""
     // Use direct_output_path for untiled workflows
-    def output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
+    output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
     def x_min_arg = Utils.optionalCliArg("--x-min", meta.x_min)
     def x_max_arg = Utils.optionalCliArg("--x-max", meta.x_max)
     def y_min_arg = Utils.optionalCliArg("--y-min", meta.y_min)

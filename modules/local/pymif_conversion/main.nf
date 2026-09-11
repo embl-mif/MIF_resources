@@ -14,7 +14,7 @@ process PYMIF_CONVERSION {
     task.ext.when == null || task.ext.when
 
     script:
-    output_zarr = meta.zarr_output_name
+    output_zarr = meta.zarr_output_name ?: "${meta.id}.ome.zarr"
 
 	def args = task.ext.args ?: ''
 

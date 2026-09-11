@@ -44,7 +44,7 @@ workflow {
             def resolution_level = Utils.normalizeOptionalText(row.resolution_level)
             def use_physical_units = Utils.normalizeOptionalText(row.use_physical_units)
             def do_3D_text = Utils.normalizeOptionalText(row.do_3D)
-            def do_3D_value = do_3D_text
+            def do_3D_value = do_3D_text ?: false
 
             def resolved_labels_output = resolveOutput(row.labels_output, "${dataset_id}_labels.ome.zarr")
 
@@ -73,25 +73,25 @@ workflow {
 
     PYMIF_CONVERSION(pymif_inputs_ch)
 
-    // /*
-    //  * Creates a multiscale 2D OME-Zarr by applying max() over Z at every
-    //  * resolution level.
-    //  *
-    //  * Expected output:
-    //  * tuple(meta, mip_zarr)
-    //  */
-    // PYMIF_MIP_ZARR(PYMIF_CONVERSION.out.zarr)
+    /*
+     * Creates a multiscale 2D OME-Zarr by applying max() over Z at every
+     * resolution level.
+     *
+     * Expected output:
+     * tuple(meta, mip_zarr)
+     */
+    PYMIF_MIP_ZARR(PYMIF_CONVERSION.out.zarr)
 
-    // ch_cellpose_inputs = PYMIF_MIP_ZARR.out.zarr
-    //     .map { meta, zarr_path ->
-    //         def (local_image, image_uri) = Utils.splitImageInput(
-    //             zarr_path,
-    //             file("${workflow.projectDir}/assets/NO_FILE")
-    //         )
-    //         tuple(meta, local_image, image_uri)
-    //     }
+    ch_cellpose_inputs = PYMIF_MIP_ZARR.out.zarr
+        .map { meta, zarr_path ->
+            def (local_image, image_uri) = Utils.splitImageInput(
+                zarr_path,
+                file("${workflow.projectDir}/assets/NO_FILE")
+            )
+            tuple(meta, local_image, image_uri)
+        }
 
-    // CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs, ch_cellpose_model)
+    CELLPOSE_SAM_ZARR_MIF(ch_cellpose_inputs, ch_cellpose_model)
 
 }
 
