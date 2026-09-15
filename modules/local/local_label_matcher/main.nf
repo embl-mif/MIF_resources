@@ -1,6 +1,6 @@
 process LOCAL_LABEL_MATCHER {
     tag "$meta.id"
-    label "process low"
+    label "process_low"
 
     container "docker://registry.git.embl.org/grp-cba/containers/multicut_stitching:0.8.0"
 
