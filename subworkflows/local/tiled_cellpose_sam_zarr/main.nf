@@ -32,8 +32,8 @@ workflow TILED_CELLPOSE_SAM_ZARR {
 
     ch_merged_zarr_input = TILE_CONSTRUCTOR.out.tiles
         .map { parentMeta, tileCsv -> tuple(parentMeta.id, tileCsv) }
-        .join( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(id, localImage, imageUri) } )
-        .map { srcId, tileCsv, localImage, imageUri ->
+        .join( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(id, meta, localImage, imageUri) } )
+        .map { srcId, tileCsv,parentMeta, localImage, imageUri ->
             def sourceImagePath = imageUri ?: localImage.toString()
             def mergedOutputZarr = parentMeta.labels_output ?: "${val_output_dir}/${srcId}_merged_mask.ome.zarr"
             def mergedMeta = [id: srcId, dtype: 'uint32', data_type: 'label']
