@@ -48,7 +48,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .join( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(id, meta, image, localImage, imageUri) } )
         .flatMap { _srcId, tileCsv, parentMeta, image, localImage, imageUri ->
             tileCsv.splitCsv(header: true).collect { row ->
-                def tileMeta = [
+                def tileMeta = parentMeta + [
                     id: row.dataset_id,
                     source_dataset_id: row.source_dataset_id,
                     tile_id: row.tile_id,
@@ -66,14 +66,8 @@ workflow TILED_CELLPOSE_SAM_ZARR {
                     tile_size_x: row.tile_size_x,
                     tile_size_y: row.tile_size_y,
                     tile_size_z: row.tile_size_z,
-                    segmentation_channels: parentMeta.segmentation_channels,
-                    halo: parentMeta.halo,
                     use_physical_units: false,
-                    do_3D: parentMeta.do_3D ?: false,
-                    diameter: parentMeta.diameter,
-                    niter: parentMeta.niter,
-                    flow_threshold: parentMeta.flow_threshold,
-                    cellprob_threshold: parentMeta.cellprob_threshold,
+                    do_3D: parentMeta.do_3D ?: false
                 ]
  
                 tuple(tileMeta, image, localImage, imageUri)
