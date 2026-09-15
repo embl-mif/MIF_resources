@@ -57,10 +57,11 @@ process CELLPOSE_SAM_ZARR_MIF {
     container "docker://registry.git.embl.org/grp-cba/containers/cellposesam-zarr:4.1.1"
 
     input:
-    tuple val(meta), val(image_uri)
+    tuple val(meta), path(local_image), val(image_uri)
+    path(pretrained_cellpose_model)
 
     output:
-    tuple val(meta), val(meta.labels_output_name), emit: labels
+    tuple val(meta), val("${task.workDir.resolve(output_zarr.toString())}"), emit: labels
 
     script:
     def image = image_uri ?: local_image
@@ -71,31 +72,30 @@ process CELLPOSE_SAM_ZARR_MIF {
     // distinct filename from the local_image sentinel (assets/NO_FILE) on purpose --
     // two `path` inputs resolving to the same filename in one task otherwise trigger a
     // Nextflow "input file name collision" error.
-    def cellpose_model_arg = meta.pretrained_cellpose_model != null ? "-m ${meta.pretrained_cellpose_model}" : ""
-
-    def x_min_arg = meta.x_min != null ? "--x-min ${meta.x_min}" : ""
-    def x_max_arg = meta.x_max != null ? "--x-max ${meta.x_max}" : ""
-    def y_min_arg = meta.y_min != null ? "--y-min ${meta.y_min}" : ""
-    def y_max_arg = meta.y_max != null ? "--y-max ${meta.y_max}" : ""
-    def z_min_arg = meta.z_min != null ? "--z-min ${meta.z_min}" : ""
-    def z_max_arg = meta.z_max != null ? "--z-max ${meta.z_max}" : ""
-    def channels_arg = meta.segmentation_channels != null ? "--segmentation_channels ${meta.segmentation_channels}" : ""
-    def halo_arg = meta.halo != null ? "--halo ${meta.halo}" : ""
-    def resolution_level_arg = meta.resolution_level != null ? "--resolution-level ${meta.resolution_level}" : ""
+    def cellpose_model_arg = pretrained_cellpose_model.name != 'NO_MODEL_FILE' ? "-m ${pretrained_cellpose_model}" : ""
+    // Use direct_output_path for untiled workflows
+    output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
+    def x_min_arg = Utils.optionalCliArg("--x-min", meta.x_min)
+    def x_max_arg = Utils.optionalCliArg("--x-max", meta.x_max)
+    def y_min_arg = Utils.optionalCliArg("--y-min", meta.y_min)
+    def y_max_arg = Utils.optionalCliArg("--y-max", meta.y_max)
+    def z_min_arg = Utils.optionalCliArg("--z-min", meta.z_min)
+    def z_max_arg = Utils.optionalCliArg("--z-max", meta.z_max)
+    def channels_arg = Utils.optionalCliArg("--segmentation_channels", meta.segmentation_channels)
+    def halo_arg = Utils.optionalCliArg("--halo", meta.halo)
+    def resolution_level_arg = Utils.optionalCliArg("--resolution-level", meta.resolution_level)
     def use_physical_units_arg = meta.use_physical_units ? "--use-physical-units" : ""
-    
-    def diameter_arg = meta.diameter != null ? "--diameter ${meta.diameter}" : ""
-    def niter_arg = meta.niter != null ? "--niter ${meta.niter}" : ""
-    def flow_threshold_arg = meta.flow_threshold != null ? "--flow-threshold ${meta.flow_threshold}" : ""
-    def cellprob_threshold_arg = meta.cellprob_threshold != null ? "--cellprob-threshold ${meta.cellprob_threshold}" : ""
-    def do_3D_arg = meta.do_3D != null ? "--do_3D ${meta.do_3D}" : ""
-
+    def diameter_arg = Utils.optionalCliArg("--diameter", meta.diameter)
+    def niter_arg = Utils.optionalCliArg("--niter", meta.niter)
+    def flow_threshold_arg = Utils.optionalCliArg("--flow_threshold", meta.flow_threshold)
+    def cellprob_threshold_arg = Utils.optionalCliArg("--cellprob_threshold", meta.cellprob_threshold)
+    def do_3D_arg = "--do_3D ${meta.do_3D}"
     def args = task.ext.args ?: ''
 
     """
     cellpose_sam_zarr.py \
         --input_zarr "${image}" \
-        --output_zarr ${meta.labels_output_name} \
+        --output_zarr ${output_zarr} \
         ${channels_arg} \
         ${x_min_arg} \
         ${x_max_arg} \
@@ -116,7 +116,8 @@ process CELLPOSE_SAM_ZARR_MIF {
     """
 
     stub:
-    def output_zarr = "${meta.id}_labels.ome.zarr"
+    def direct_output_path = params.cellpose_direct_output_dir ? "${params.cellpose_direct_output_dir}/${meta.id}_labels.ome.zarr" : ""
+    def output_zarr = direct_output_path ?: "${meta.id}_labels.ome.zarr"
     """
     mkdir -p ${output_zarr}
     touch ${output_zarr}/.zgroup
