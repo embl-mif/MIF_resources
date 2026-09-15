@@ -11,8 +11,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
     take:
     ch_images              // channel: [ meta, image_path ] -- meta already carries
                             //   per-image segmentation_channels/halo/use_physical_units
-    val_output_dir         // string:  base output dir; merged stores land under
-                            //   "${val_output_dir}/<source_id>_merged_mask.ome.zarr"
+    val_output_dir         // string:  base output dir for merged labels if not specified in csv per image file
     val_label_offset_step  // integer: per-tile global label-id offset step
     val_multicut_beta      // float:   LABEL_SOLVER multicut beta parameter
 
@@ -36,7 +35,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .join( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(id, localImage, imageUri) } )
         .map { srcId, tileCsv, localImage, imageUri ->
             def sourceImagePath = imageUri ?: localImage.toString()
-            def mergedOutputZarr = "${val_output_dir}/${srcId}_merged_mask.ome.zarr"
+            def mergedOutputZarr = parentMeta.labels_output ?: "${val_output_dir}/${srcId}_merged_mask.ome.zarr"
             def mergedMeta = [id: srcId, dtype: 'uint32', data_type: 'label']
             tuple(mergedMeta, '', tileCsv, sourceImagePath, mergedOutputZarr)
         }
