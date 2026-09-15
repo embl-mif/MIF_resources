@@ -529,7 +529,7 @@ def run_cellpose(
             eval_kwargs["channel_axis"] = input_dims.index("c")
         if n_slices > 1:
             eval_kwargs["z_axis"] = input_dims.index("z")
-            if do_3D or anisotropy < 8:
+            if do_3D:
                 eval_kwargs["do_3D"] = True
                 eval_kwargs["anisotropy"] = anisotropy
                 eval_kwargs["flow3D_smooth"] = flow3D_smooth
