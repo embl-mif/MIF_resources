@@ -71,6 +71,10 @@ workflow TILED_CELLPOSE_SAM_ZARR {
                     halo: parentMeta.halo,
                     use_physical_units: false,
                     do_3D: parentMeta.do_3D ?: false,
+                    diameter: parentMeta.diameter,
+                    niter: parentMeta.niter,
+                    flow_threshold: parentMeta.flow_threshold,
+                    cellprob_threshold: parentMeta.cellprob_threshold,
                 ]
  
                 tuple(tileMeta, image, localImage, imageUri)
