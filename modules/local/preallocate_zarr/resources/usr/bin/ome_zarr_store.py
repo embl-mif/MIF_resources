@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 
-"""Minimal OME-Zarr store creation/writing helpers, used by Module 6a
-(`PREALLOCATE_EMPTY_ZARR`) and Module 6b (`WRITE_RELABELED_TILE`) to create an
-empty, metadata-only merged-segmentation store and then fill it in with one
-write per tile.
-
+"""Minimal OME-Zarr store creation/writing helpers.
 Adapted from squirrel's `ome_zarr.py`
 (https://github.com/embl-ic/squirrel/blob/main/squirrel/library/ome_zarr.py,
 GPL-3.0), with one fix: `OMEZarrMetadata.create`'s `axes` list was hardcoded
@@ -52,6 +48,10 @@ def detect_ome_version(root):
     """
 
     attrs = root.attrs
+    ome = attrs.get("ome")
+    if isinstance(ome, dict) and "multiscales" in ome:
+        ms = ome["multiscales"][0]
+        return ms.get("version", "0.4")
 
     if "multiscales" not in attrs:
         raise ValueError("Not an OME-Zarr dataset.")
