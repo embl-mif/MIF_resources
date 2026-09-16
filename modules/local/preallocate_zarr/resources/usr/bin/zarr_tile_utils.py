@@ -81,7 +81,10 @@ def _read_input_calibration(
     ome_version = detect_ome_version(root)
     zarr_format = detect_zarr_format(root)
 
-    ms = root.attrs["multiscales"][0]
+    attrs = root.attrs
+    ome = attrs.get("ome")
+    multiscales = ome["multiscales"] if isinstance(ome, dict) and "multiscales" in ome else attrs["multiscales"]
+    ms = multiscales[0]
     dataset = ms["datasets"][resolution_level]
     axes = [axis["name"] for axis in ms["axes"]]
 
