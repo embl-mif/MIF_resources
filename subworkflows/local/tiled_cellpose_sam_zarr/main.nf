@@ -67,7 +67,9 @@ workflow TILED_CELLPOSE_SAM_ZARR {
                     tile_size_y: row.tile_size_y,
                     tile_size_z: row.tile_size_z,
                     use_physical_units: false,
-                    do_3D: parentMeta.do_3D ?: false
+                    do_3D: parentMeta.do_3D ?: false,
+                    labels_output_name: "${row.dataset_id}_labels.ome.zarr",
+                    is_tiled: true,
                 ]
  
                 tuple(tileMeta, image, localImage, imageUri)
@@ -77,13 +79,27 @@ workflow TILED_CELLPOSE_SAM_ZARR {
     ch_cellpose_model = params.cellpose_model_path
         ? Channel.value(file(params.cellpose_model_path, checkIfExists: true))
         : Channel.value(file("${workflow.projectDir}/assets/NO_MODEL_FILE"))
- 
+
+    ch_image_tiles_checked = ch_image_tiles.map { meta, image, localImage, imageUri ->
+        def expectedPath = file("${params.outdir}/cellpose_tiles/${meta.source_dataset_id}/${meta.labels_output_name}")
+        tuple(meta, image, localImage, imageUri, expectedPath, expectedPath.exists())
+    }
+
+    ch_to_run = ch_image_tiles_checked
+        .filter { meta, image, localImage, imageUri, expectedPath, done -> !done }
+
+    ch_precomputed = ch_image_tiles_checked
+        .filter { meta, image, localImage, imageUri, expectedPath, done -> done }
+        .map { meta, image, localImage, imageUri, expectedPath, done -> tuple(meta, expectedPath.toString()) }
+
     CELLPOSE_SAM_ZARR_MIF(
-        ch_image_tiles.map { meta, image, localImage, imageUri -> tuple(meta, localImage, imageUri) },
+        ch_to_run.map { meta, image, localImage, imageUri -> tuple(meta, localImage, imageUri) },
         ch_cellpose_model
     )
 
-    ch_tiles_and_segmentations_csv = CELLPOSE_SAM_ZARR_MIF.out.labels
+    ch_all_labels = CELLPOSE_SAM_ZARR_MIF.out.labels.mix(ch_precomputed)
+
+    ch_tiles_and_segmentations_csv = ch_all_labels
         .map { meta, label ->
             tuple(meta.source_dataset_id, "${meta.id},${meta.source_dataset_id},${meta.tile_id},${meta.tile_index},${meta.x_min},${meta.x_max},${meta.y_min},${meta.y_max},${meta.z_min},${meta.z_max},${meta.resolution_level},${meta.tile_overlap_x},${meta.tile_overlap_y},${meta.tile_overlap_z},${label}")
         }
@@ -98,12 +114,12 @@ workflow TILED_CELLPOSE_SAM_ZARR {
     FIND_TILE_NEIGHBORS(ch_tile_neighbors_input)
 
     // dataset_id -> label path, for resolving neighbor labels below.
-    ch_label_path_by_id = CELLPOSE_SAM_ZARR_MIF.out.labels
+    ch_label_path_by_id = ch_all_labels
         .map { meta, label -> tuple(meta.id, label) }
         .toList()
         .map { pairs -> pairs.collectEntries { id, label -> [(id): label] } }
  
-    ch_local_matcher_input = CELLPOSE_SAM_ZARR_MIF.out.labels
+    ch_local_matcher_input = ch_all_labels
         .map { meta, label -> tuple(meta.id, meta + [label_offset_step: val_label_offset_step], label) }
         .join(
             FIND_TILE_NEIGHBORS.out.tile_neighbors.flatMap { srcMeta, csv ->
@@ -138,7 +154,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
  
     LABEL_SOLVER(ch_local_graphs_grouped)
  
-    ch_write_tile_input = CELLPOSE_SAM_ZARR_MIF.out.labels
+    ch_write_tile_input = ch_all_labels
         .map { meta, label -> tuple(meta.id, meta + [label_offset_step: val_label_offset_step], label) }
         .join(
             FIND_TILE_NEIGHBORS.out.tile_neighbors.flatMap { _srcMeta, csv ->
