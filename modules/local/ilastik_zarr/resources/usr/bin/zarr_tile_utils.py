@@ -3,7 +3,7 @@
 compute_output_geometry/_read_tile_rows/_read_input_calibration moved here
 from the now-retired preallocate_empty_zarr.py: the stitched multi-tile
 merge store is built via the general-purpose preallocate_zarr.py
---shape/--axes/--scale/--chunks/--translation mode (mode 2) instead of a
+--shape/--axes/--scale/--chunks/--translation mode instead of a
 bespoke OMEZarrStore-based script, and this is the geometry math that feeds
 that mode. write_relabeled_tile.py also needs compute_output_geometry/
 _read_tile_rows for its own write-position math, so this is the one place
@@ -81,7 +81,10 @@ def _read_input_calibration(
     ome_version = detect_ome_version(root)
     zarr_format = detect_zarr_format(root)
 
-    ms = root.attrs["multiscales"][0]
+    attrs = root.attrs
+    ome = attrs.get("ome")
+    multiscales = ome["multiscales"] if isinstance(ome, dict) and "multiscales" in ome else attrs["multiscales"]
+    ms = multiscales[0]
     dataset = ms["datasets"][resolution_level]
     axes = [axis["name"] for axis in ms["axes"]]
 
