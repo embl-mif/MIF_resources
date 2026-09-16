@@ -93,7 +93,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .map { meta, image, localImage, imageUri, expectedPath, done -> tuple(meta, expectedPath.toString()) }
 
     CELLPOSE_SAM_ZARR_MIF(
-        ch_to_run.map { meta, image, localImage, imageUri -> tuple(meta, localImage, imageUri) },
+        ch_to_run.map { meta, image, localImage, imageUri, expectedPath, done -> tuple(meta, localImage, imageUri) },
         ch_cellpose_model
     )
 
