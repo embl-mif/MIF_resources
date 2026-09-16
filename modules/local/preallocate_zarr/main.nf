@@ -1,7 +1,7 @@
 process PREALLOCATE_ZARR {
     tag "$meta.id"
     label 'process_low'
-    container "docker://registry.git.embl.org/grp-cba/containers/zarr_tools:0.34.0"
+    conda "${moduleDir}/environment.yml"
 
     input:
     tuple val(meta), val(input_zarr), path(tiles_csv), val(input_image_path), val(output_zarr)
