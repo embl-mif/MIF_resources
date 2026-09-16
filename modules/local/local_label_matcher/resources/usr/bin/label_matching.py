@@ -386,8 +386,15 @@ def _offset_labels(seg: np.ndarray, offset: int, background: int = 0) -> np.ndar
 
 def _open_label_array(path: str):
     import zarr
-
-    return zarr.open(path, mode="r")[LABEL_ARRAY_PATH]
+    array = zarr.open(path, mode="r")[LABEL_ARRAY_PATH]
+    if array.ndim > 3 and array.shape[0] == 1:
+        # Singleton leading axis from an OME-Zarr `t` (or stray) dimension the
+        # tiled-stitching pipeline doesn't model -- drop it here so every
+        # downstream ndim==2/3 check sees the real spatial rank. A genuine
+        # multi-frame axis (shape[0] > 1) is left untouched and will still
+        # correctly raise, since this pipeline has no per-timepoint stitching.
+        array = array[0]
+    return array
 
 
 def _load_full(path: str) -> np.ndarray:
