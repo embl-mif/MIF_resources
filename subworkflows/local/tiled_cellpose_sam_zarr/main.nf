@@ -1,5 +1,5 @@
 include { TILE_CONSTRUCTOR      } from '../../../modules/local/tileconstructor/main'
-include { CELLPOSE_SAM_ZARR_MIF } from '../../../modules/local/cellpose_sam_zarr_mif/main'
+include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_SAM_ZARR_MIF_TILED} from '../../../modules/local/cellpose_sam_zarr_mif/main'
 include { PREALLOCATE_ZARR      } from '../../../modules/local/preallocate_zarr/main'
 include { FIND_TILE_NEIGHBORS   } from '../../../modules/local/find_tile_neighbors/main'
 include { LOCAL_LABEL_MATCHER   } from '../../../modules/local/local_label_matcher/main'
@@ -10,7 +10,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
 
     take:
     ch_images              // channel: [ meta, image_path ] -- meta already carries
-                            //   per-image segmentation_channels/halo/use_physical_units
+                            //   per-image segmentati_TILEDon_channels/halo/use_physical_units
     val_output_dir         // string:  base output dir for merged labels if not specified in csv per image file
     val_label_offset_step  // integer: per-tile global label-id offset step
     val_multicut_beta      // float:   LABEL_SOLVER multicut beta parameter
@@ -92,12 +92,12 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .filter { meta, image, localImage, imageUri, expectedPath, done -> done }
         .map { meta, image, localImage, imageUri, expectedPath, done -> tuple(meta, expectedPath.toString()) }
 
-    CELLPOSE_SAM_ZARR_MIF(
+    CELLPOSE_SAM_ZARR_MIF_TILED(
         ch_to_run.map { meta, image, localImage, imageUri, expectedPath, done -> tuple(meta, localImage, imageUri) },
         ch_cellpose_model
     )
 
-    ch_all_labels = CELLPOSE_SAM_ZARR_MIF.out.labels.mix(ch_precomputed)
+    ch_all_labels = CELLPOSE_SAM_ZARR_MIF_TILED.out.labels.mix(ch_precomputed)
 
     ch_tiles_and_segmentations_csv = ch_all_labels
         .map { meta, label ->
