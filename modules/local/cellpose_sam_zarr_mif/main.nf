@@ -118,7 +118,7 @@ process CELLPOSE_SAM_ZARR_MIF {
 
     stub:
     def direct_output_path = params.cellpose_direct_output_dir ? "${params.cellpose_direct_output_dir}/${meta.id}_labels.ome.zarr" : ""
-    def output_zarr = direct_output_path ?: "${meta.id}_labels.ome.zarr"
+    output_zarr = direct_output_path ?: "${meta.id}_labels.ome.zarr"
     """
     mkdir -p ${output_zarr}
     touch ${output_zarr}/.zgroup
