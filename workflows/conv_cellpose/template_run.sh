@@ -16,11 +16,13 @@ module load Nextflow/25.10.1
 cd "/scratch/$USER/conv_cellpose" # <---------- MODIFY IF NEEDED
 
 export NF_PATH="/home/$USER/projects/mif-resources/workflows/conv_cellpose/main.nf" # <--- MODIFY
+export LIB_PATH="/home/$USER/projects/mif-resources/lib" # <--- MODIFY
 export WDIR="/PATH/TO/WORK/DIRECTORY" # <---------------- MODIFY TO YOUR DESIRED WORK LOCATION
 export CSV_PATH="/PATH/TO/batch.csv" # <----------------- MODIFY
 export OUTDIR="/scratch/$USER/conv_cellpose/results" # <--- MODIFY
 
 nextflow run "$NF_PATH" \
+    -lib "$LIB_PATH" \
     -work-dir "$WDIR" \
     --input_csv "$CSV_PATH" \
     --outdir "$OUTDIR" \
