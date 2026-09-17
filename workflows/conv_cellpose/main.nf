@@ -49,7 +49,6 @@ workflow {
             def labels_output_name = labels_output_value
                 ? file(labels_output_value).name
                 : "${dataset_id}_labels.ome.zarr"
-            def labels_output_value = Utils.normalizeOptionalText(row.labels_output)
             def resolved_labels_output = labels_output_value
                 ? (file(labels_output_value).isAbsolute()
                     ? labels_output_value                    // abs path: keep as given
