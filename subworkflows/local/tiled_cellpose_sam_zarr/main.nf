@@ -81,7 +81,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         : Channel.value(file("${workflow.projectDir}/assets/NO_MODEL_FILE"))
 
     ch_image_tiles_checked = ch_image_tiles.map { meta, image, localImage, imageUri ->
-        def expectedPath = file("${params.outdir}/cellpose_tiles/${meta.source_dataset_id}/${meta.labels_output_name}")
+        def expectedPath = file("/scratch/${System.getenv('USER')}/cellpose_tiles_published/${meta.source_dataset_id}/${meta.labels_output_name}")
         tuple(meta, image, localImage, imageUri, expectedPath, expectedPath.exists())
     }
 
