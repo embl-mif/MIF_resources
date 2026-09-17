@@ -39,16 +39,25 @@ The remaining optional conversion columns are passed to `pymif 2zarr`:
 | `channel_names` | `--channel_names` |
 | `num_levels` | `--num_levels` |
 | `subset` | `--subset` |
+| `shards` | `--shards` |
+| `shard_target_mb` | `--shard_target_mb` |
+| `shard_exclude_axes` | `--shard_exclude_axes` |
 
 When both `chunk_size` and `max_size(MB)` are present, `chunk_size` takes
 precedence.
 
+`shards` is only valid with `zarr_format` `3`: use `auto` to size shards
+automatically, or an explicit shard shape matching the dataset axes (e.g.
+`1 1 8 2160 4096`). `shard_target_mb` only applies when `shards` is `auto`
+(default `64`). `shard_exclude_axes` defaults to `t c` (axes that `auto`
+sharding never merges chunks along); use `none` to allow every axis to merge.
+
 ### Example
 
 ```csv
-dataset_id,input,microscope,output,chunk_size,max_size(MB),scene_index,zarr_format,downscale_factor,channel_colors,channel_names,num_levels,subset,cellpose_diameter,cellpose_niter
-sample_01,/g/mif-hd/shared/data/sample_01.ome.tiff,opera,sample_01.ome.zarr,1 1 1 512 512,,0,2,2,,"DAPI,GFP",4,,30,200
-sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,sample_02.ome.zarr,,100,0,2,2,,"DAPI,GFP",4,,25,150
+dataset_id,input,microscope,output,chunk_size,max_size(MB),scene_index,zarr_format,downscale_factor,channel_colors,channel_names,num_levels,subset,shards,shard_target_mb,shard_exclude_axes,cellpose_diameter,cellpose_niter
+sample_01,/g/mif-hd/shared/data/sample_01.ome.tiff,opera,sample_01.ome.zarr,1 1 1 512 512,,0,2,2,,"DAPI,GFP",4,,,,,30,200
+sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,sample_02.ome.zarr,,100,0,2,2,,"DAPI,GFP",4,,,,,25,150
 ```
 
 Empty optional fields are passed through as unset values. Paths containing

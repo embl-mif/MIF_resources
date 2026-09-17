@@ -27,13 +27,22 @@ The other columns are optional and are converted into the corresponding
 | `channel_names` | `--channel_names` |
 | `num_levels` | `--num_levels` |
 | `subset` | `--subset` |
+| `shards` | `--shards` |
+| `shard_target_mb` | `--shard_target_mb` |
+| `shard_exclude_axes` | `--shard_exclude_axes` |
+
+`shards` is only valid with `zarr_format` `3`: use `auto` to size shards
+automatically, or an explicit shard shape matching the dataset axes (e.g.
+`1 1 8 2160 4096`). `shard_target_mb` only applies when `shards` is `auto`
+(default `64`). `shard_exclude_axes` defaults to `t c` (axes that `auto`
+sharding never merges chunks along); use `none` to allow every axis to merge.
 
 ### Example
 
 ```csv
-input,microscope,output,chunk_size,max_size(MB),scene_index,zarr_format,downscale_factor,channel_colors,channel_names,num_levels,subset
-/data/experiment/sample_01.ome.tiff,opera,sample_01.ome.zarr,1 1 1 512 512,100,0,2,2,,"DAPI,GFP",4,
-/data/experiment/sample_02.ome.tiff,opera,sample_02.ome.zarr,,100,0,3,1 2 2,,"DAPI,GFP",,y=100:2000;x=100:2000
+input,microscope,output,chunk_size,max_size(MB),scene_index,zarr_format,downscale_factor,channel_colors,channel_names,num_levels,subset,shards,shard_target_mb,shard_exclude_axes
+/data/experiment/sample_01.ome.tiff,opera,sample_01.ome.zarr,1 1 1 512 512,100,0,2,2,,"DAPI,GFP",4,,,,
+/data/experiment/sample_02.ome.tiff,opera,sample_02.ome.zarr,,100,0,3,1 2 2,,"DAPI,GFP",,y=100:2000;x=100:2000,auto,256,t c
 ```
 
 For the first row, the conversion module constructs a command equivalent to:

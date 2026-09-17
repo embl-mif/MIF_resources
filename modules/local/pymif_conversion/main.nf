@@ -23,6 +23,14 @@ process PYMIF_CONVERSION {
         value.toString().trim() &&
         !['-1', 'none', 'null', 'nan'].contains(value.toString().trim().toLowerCase())
     }
+    // "none" is a meaningful value for shard_exclude_axes (it disables the
+    // default t/c exclusion so every axis may be merged into a shard), unlike
+    // the other columns where "none" means "not set".
+    def isPresentAllowNone = { value ->
+        value != null &&
+        value.toString().trim() &&
+        !['-1', 'null', 'nan'].contains(value.toString().trim().toLowerCase())
+    }
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
     }
@@ -58,7 +66,8 @@ process PYMIF_CONVERSION {
         scene_index: '--scene_index',
         zarr_format: '--zarr_format',
         num_levels: '--num_levels',
-        subset: '--subset'
+        subset: '--subset',
+        shard_target_mb: '--shard_target_mb'
     ].each { header, option ->
         if (isPresent(meta[header])) {
             commandParts.addAll([option, shellQuote(meta[header])])
@@ -68,7 +77,8 @@ process PYMIF_CONVERSION {
     [
         downscale_factor: '--downscale_factor',
         channel_names: '--channel_names',
-        channel_colors: '--channel_colors'
+        channel_colors: '--channel_colors',
+        shards: '--shards'
     ].each { header, option ->
         if (isPresent(meta[header])) {
             def values = header == 'downscale_factor' ?
@@ -77,6 +87,13 @@ process PYMIF_CONVERSION {
             commandParts.add(option)
             commandParts.addAll(values.collect { shellQuote(it) })
         }
+    }
+
+    // shard_exclude_axes only applies with --shards, but is parsed on its own
+    // so an explicit "none" (allow every axis to merge) is not dropped.
+    if (isPresentAllowNone(meta.shard_exclude_axes)) {
+        commandParts.add('--shard_exclude_axes')
+        commandParts.addAll(channelValues(meta.shard_exclude_axes).collect { shellQuote(it) })
     }
 
     def command = commandParts.join(' ')
