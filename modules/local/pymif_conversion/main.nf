@@ -1,25 +1,35 @@
 process PYMIF_CONVERSION {
     tag "${meta.id}"
     label 'process_medium'
-    container 'ghcr.io/grinic/pymif:2026.7.4'
+    container 'ghcr.io/grinic/pymif:2026.9.1'
 
     input:
     tuple val(meta), path(input_dataset)
 
     output:
-    tuple val(meta), val(meta.zarr_output_name), emit: zarr
+    tuple val(meta),  val("${task.workDir.resolve(output_zarr.toString())}")   , emit: zarr
     path "versions.yml"                  , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
-    def args = task.ext.args ?: ''
+    output_zarr = meta.zarr_output_name ?: "${meta.id}.ome.zarr"
+
+	def args = task.ext.args ?: ''
 
     def isPresent = { value ->
         value != null &&
         value.toString().trim() &&
         !['-1', 'none', 'null', 'nan'].contains(value.toString().trim().toLowerCase())
+    }
+    // "none" is a meaningful value for shard_exclude_axes (it disables the
+    // default t/c exclusion so every axis may be merged into a shard), unlike
+    // the other columns where "none" means "not set".
+    def isPresentAllowNone = { value ->
+        value != null &&
+        value.toString().trim() &&
+        !['-1', 'null', 'nan'].contains(value.toString().trim().toLowerCase())
     }
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
@@ -36,7 +46,7 @@ process PYMIF_CONVERSION {
     def commandParts = [
         'pymif', '2zarr',
         '--input_path', shellQuote(meta.input),
-        '--zarr_path', shellQuote(meta.zarr_output_name)
+        '--zarr_path', shellQuote(output_zarr)
     ]
 
     if (isPresent(meta.microscope)) {
@@ -56,7 +66,8 @@ process PYMIF_CONVERSION {
         scene_index: '--scene_index',
         zarr_format: '--zarr_format',
         num_levels: '--num_levels',
-        subset: '--subset'
+        subset: '--subset',
+        shard_target_mb: '--shard_target_mb'
     ].each { header, option ->
         if (isPresent(meta[header])) {
             commandParts.addAll([option, shellQuote(meta[header])])
@@ -66,7 +77,8 @@ process PYMIF_CONVERSION {
     [
         downscale_factor: '--downscale_factor',
         channel_names: '--channel_names',
-        channel_colors: '--channel_colors'
+        channel_colors: '--channel_colors',
+        shards: '--shards'
     ].each { header, option ->
         if (isPresent(meta[header])) {
             def values = header == 'downscale_factor' ?
@@ -77,14 +89,26 @@ process PYMIF_CONVERSION {
         }
     }
 
+    // shard_exclude_axes only applies with --shards, but is parsed on its own
+    // so an explicit "none" (allow every axis to merge) is not dropped.
+    if (isPresentAllowNone(meta.shard_exclude_axes)) {
+        commandParts.add('--shard_exclude_axes')
+        commandParts.addAll(channelValues(meta.shard_exclude_axes).collect { shellQuote(it) })
+    }
+
     def command = commandParts.join(' ')
 
     """
-    if [ -d ${shellQuote(meta.zarr_output_name)} ] && [ -e ${shellQuote(meta.zarr_output_name)}/zarr.json -o -e ${shellQuote(meta.zarr_output_name)}/.zgroup ]; then
-        echo "Output already exists, skipping conversion: ${meta.zarr_output_name}"
+    if [ -d ${shellQuote(output_zarr)} ] && [ -e ${shellQuote(output_zarr)}/zarr.json -o -e ${shellQuote(output_zarr)}/.zgroup ]; then
+        echo "Output already exists, skipping conversion: ${output_zarr}"
     else
-        mkdir -p \$(dirname ${shellQuote(meta.zarr_output_name)})
+        mkdir -p \$(dirname ${shellQuote(output_zarr)})
         ${command} ${args}
+    fi
+
+    if [ ! -e ${shellQuote(output_zarr)}/zarr.json ] && [ ! -e ${shellQuote(output_zarr)}/.zgroup ]; then
+        echo "ERROR: expected zarr store not found: ${output_zarr}" >&2
+        exit 1
     fi
 
     cat <<-END_VERSIONS > versions.yml
@@ -94,8 +118,9 @@ process PYMIF_CONVERSION {
     """
 
     stub:
+    output_zarr = meta.zarr_output_name    
     """
-    mkdir -p "${meta.zarr_output_name}"
+    mkdir -p "${output_zarr}"
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         pymif: "stub"
