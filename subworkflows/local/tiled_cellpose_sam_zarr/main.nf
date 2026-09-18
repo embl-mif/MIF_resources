@@ -10,7 +10,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
 
     take:
     ch_images              // channel: [ meta, image_path ] -- meta already carries
-                            //   per-image segmentati_TILEDon_channels/halo/use_physical_units
+                           // per-image segmentation_channels/halo/use_physical_units
     val_output_dir         // string:  base output dir for merged labels if not specified in csv per image file
     val_label_offset_step  // integer: per-tile global label-id offset step
     val_multicut_beta      // float:   LABEL_SOLVER multicut beta parameter
