@@ -19,9 +19,9 @@ workflow TILED_CELLPOSE_SAM_ZARR {
 
     ch_versions = Channel.empty()
 
-
-    def noNeighborZarr  = file("${workflow.projectDir}/assets/NO_FILE")
-    def noImageSentinel = file("${workflow.projectDir}/assets/NO_FILE")
+    def repoRootDir = workflow.projectDir.getParent().getParent()
+    def noNeighborZarr  = file("${repoRootDir}/assets/NO_FILE")
+    def noImageSentinel = file("${repoRootDir}/assets/NO_FILE")
 
     ch_split_images = ch_images.map { meta, image ->
         def (localImage, imageUri) = Utils.splitImageInput(image, noImageSentinel)
@@ -78,7 +78,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
 
     ch_cellpose_model = params.cellpose_model_path
         ? Channel.value(file(params.cellpose_model_path, checkIfExists: true))
-        : Channel.value(file("${workflow.projectDir}/assets/NO_MODEL_FILE"))
+        : Channel.value(file("${repoRootDir}/assets/NO_MODEL_FILE"))
 
     ch_image_tiles_checked = ch_image_tiles.map { meta, image, localImage, imageUri ->
         def expectedPath = file("/scratch/${System.getenv('USER')}/cellpose_tiles_published/${meta.source_dataset_id}/${meta.labels_output_name}")
