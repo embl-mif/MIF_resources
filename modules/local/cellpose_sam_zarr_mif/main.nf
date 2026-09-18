@@ -75,7 +75,8 @@ process CELLPOSE_SAM_ZARR_MIF {
     // Nextflow "input file name collision" error.
     def cellpose_model_arg = pretrained_cellpose_model.name != 'NO_MODEL_FILE' ? "-m ${pretrained_cellpose_model}" : ""
     // Use direct_output_path for untiled workflows
-    output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
+    def direct_output_path = meta.labels_output as String
+    output_zarr = meta.labels_output_name ?: direct_output_path ?: "${meta.id}_labels.ome.zarr"
     def x_min_arg = Utils.optionalCliArg("--x-min", meta.x_min)
     def x_max_arg = Utils.optionalCliArg("--x-max", meta.x_max)
     def y_min_arg = Utils.optionalCliArg("--y-min", meta.y_min)
