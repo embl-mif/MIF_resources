@@ -1,0 +1,11 @@
+name: tileconstructor
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - tifffile
+  - imagecodecs
+  - pip
+  - pip:
+      -  "ngff-zarr[all]"
