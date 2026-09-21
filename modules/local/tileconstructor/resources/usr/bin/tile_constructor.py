@@ -196,8 +196,8 @@ def construct_tiles(
     source_dataset_id: str,
     input_image_path: str,
     output_csv: str,
-    tile_size_x: float,
-    tile_size_y: float,
+    tile_size_x: float | None,
+    tile_size_y: float | None,
     tile_size_z: float | None,
     tile_overlap: float,
     resolution_level: int,
@@ -238,17 +238,34 @@ def construct_tiles(
         use_physical_units=use_physical_units,
     )
 
-    if "z" in dims and tile_size_z is None:
-        raise ValueError("Input has z dimension; --tile-size-z must be provided")
+    chunk_shape = getattr(data, "chunksize", None)
 
-    tile_sizes_voxel = {
-        "x": _to_voxel_size(tile_size_x, scales["x"], "x", use_physical_units),
-        "y": _to_voxel_size(tile_size_y, scales["y"], "y", use_physical_units),
+    def _chunk_size_for(axis: str) -> int:
+        if chunk_shape is None:
+            raise ValueError(
+                f"--tile-size-{axis} was not provided and the input store has no "
+                f"readable chunk shape to fall back on"
+            )
+        return int(chunk_shape[dims.index(axis)])
+
+    tile_sizes_voxel: dict[str, int] = {
+        "x": (
+            _to_voxel_size(tile_size_x, scales["x"], "x", use_physical_units)
+            if tile_size_x is not None
+            else _chunk_size_for("x")
+        ),
+        "y": (
+            _to_voxel_size(tile_size_y, scales["y"], "y", use_physical_units)
+            if tile_size_y is not None
+            else _chunk_size_for("y")
+        ),
     }
     if "z" in roi_bounds:
-        if tile_size_z is None:
-            raise ValueError("--tile-size-z is required when tiling a z axis")
-        tile_sizes_voxel["z"] = _to_voxel_size(tile_size_z, scales["z"], "z", use_physical_units)
+        tile_sizes_voxel["z"] = (
+            _to_voxel_size(tile_size_z, scales["z"], "z", use_physical_units)
+            if tile_size_z is not None
+            else _chunk_size_for("z")
+        )
 
     overlap_voxel = {
         axis: _to_voxel_overlap(tile_overlap, scales[axis], axis, use_physical_units)
@@ -350,9 +367,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-image-path", type=str, required=True)
     parser.add_argument("--output-csv", type=str, required=True)
 
-    parser.add_argument("--tile-size-x", type=float, required=True)
-    parser.add_argument("--tile-size-y", type=float, required=True)
-    parser.add_argument("--tile-size-z", type=float, default=None)
+    parser.add_argument("--tile-size-x", type=float, default=None, help="Tile size along x. If omitted, derived from the input store's own chunk "
+        "shape at --resolution-level.",)
+    parser.add_argument("--tile-size-y", type=float, default=None,
+        help="Tile size along y. If omitted, derived from the input store's own chunk "
+        "shape at --resolution-level.",)
+    parser.add_argument("--tile-size-z", type=float, default=None, help="Tile size along z, when the input has a z axis. If omitted, derived from "
+        "the input store's own chunk shape at --resolution-level.",)
 
     parser.add_argument("--tile-overlap", type=float, default=0.0)
     parser.add_argument("--resolution-level", type=int, default=0)

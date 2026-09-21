@@ -62,6 +62,7 @@ process CELLPOSE_SAM_ZARR_MIF {
 
     output:
     tuple val(meta), val("${task.workDir.resolve(output_zarr.toString())}"), emit: labels
+    path output_zarr, emit: labels_dir // to track tiles that are completed and skip them
 
     script:
     def image = image_uri ?: local_image
@@ -116,8 +117,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     """
 
     stub:
-    def direct_output_path = params.cellpose_direct_output_dir ? "${params.cellpose_direct_output_dir}/${meta.id}_labels.ome.zarr" : ""
-    def output_zarr = direct_output_path ?: "${meta.id}_labels.ome.zarr"
+    output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
     """
     mkdir -p ${output_zarr}
     touch ${output_zarr}/.zgroup

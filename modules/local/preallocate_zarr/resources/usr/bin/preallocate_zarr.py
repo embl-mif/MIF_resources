@@ -1,28 +1,141 @@
 #!/usr/bin/env python3
-"""Preallocate an empty OME-Zarr skeleton from a source image's metadata,
-optionally remapping the channel axis to a different count/labels (e.g.
-ilastik probability outputs). Uses ngio's ImagePyramidBuilder for v2/v3
-dual support. See https://github.com/BioVisionCenter/ngio
+"""Preallocate an empty OME-Zarr skeleton.
+
+If --input-zarr is given, geometry and metadata (axes, scale, chunks, omero
+channels, data_type) are inherited from that existing store; anything the
+caller also passes explicitly overrides just that piece:
+  --num-channels/--channel-labels   remap/label the channel axis
+  --<axis>-min/--<axis>-max          crop any of t/z/y/x relative to the
+                                      source's own extent at the finest
+                                      included level
+  --num-levels                       keep only the first N pyramid levels
+  --zarr-format / --dtype / --data-type
+Cropping a spatial axis (z/y/x) shrinks its shape *and* shifts that axis'
+translation (scaled per pyramid level) so the cropped array's origin still
+lines up with the source image's own physical coordinate space. Cropping
+the time axis only shrinks its shape and records the kept range in a
+'t_range' field -- NGFF technically allows a translation on a time axis,
+but nothing here ever needs to reconcile a time crop back against a shared
+physical time coordinate the way spatial crops do against image space, so
+it isn't given one.
+
+If --input-zarr is omitted, there's no source to inherit from, so
+--shape/--axes/--scale/--chunks become required and the caller must state
+the full geometry directly (--num-channels, crop bounds, and --num-levels
+> 1 don't apply here -- there's no default to override or crop from;
+channel count and any channel labels are just whatever --shape/--axes and
+--channel-labels say). Always single-resolution in this case, since there's
+no known downsample-factor progression to build further levels from. This
+is the mode a caller with no single source image to copy from needs -- see
+preallocate_zarr_from_tiles.py, which computes shape/axes/scale/chunks/
+translation from a tile CSV and calls straight into build_skeleton() here.
+
+Uses ngio's ImagePyramidBuilder for v2/v3 dual support. See
+https://github.com/BioVisionCenter/ngio
 """
 
 import argparse
+import math
 
 import zarr
 from ngio.common._pyramid import ImagePyramidBuilder
 
+from ome_zarr_store import detect_ome_version, detect_zarr_format
 
-def _detect_input_zarr_format(root) -> int:
-    """v3 stores expose zarr_format via root.metadata; v2 stores don't."""
-    metadata = getattr(root, "metadata", None)
-    if metadata is None:
-        return 2
-    return getattr(metadata, "zarr_format", 2)
+CROP_AXES = ("t", "z", "y", "x")
+SPATIAL_AXES = ("z", "y", "x")
 
 
-def build_skeleton(input_path: str, output_path: str, dtype: str,
-                    num_channels: int | None, channel_labels: list[str] | None,
-                    zarr_format: int | None, data_type: str | None,
-                    t_min: int | None, t_max: int | None):
+def _axis_type(name: str) -> str:
+    if name == "c":
+        return "channel"
+    if name == "t":
+        return "time"
+    return "space"
+
+
+def _omero_channels(num_channels: int, channel_labels: list[str] | None, dtype: str) -> list[dict]:
+    max_val = 255.0 if dtype == "uint8" else 1.0
+    palette = ["FF0000", "00FF00", "0000FF", "FFFF00", "FF00FF", "00FFFF", "FFFFFF"]
+    labels = channel_labels or [f"channel_{i}" for i in range(num_channels)]
+    return [
+        {
+            "active": True,
+            "coefficient": 1.0,
+            "color": palette[i % len(palette)],
+            "family": "linear",
+            "inverted": False,
+            "label": label_name,
+            "window": {"end": max_val, "max": max_val, "min": 0.0, "start": 0.0},
+        }
+        for i, label_name in enumerate(labels)
+    ]
+
+
+def _rescale_crop_bound(value: float, base_scale: float, level_scale: float) -> float:
+    """Rescale one crop endpoint given in the finest included level's voxel
+    coordinates into another level's voxel coordinates, using the ratio of
+    that level's own voxel scale to the base level's."""
+    if level_scale == base_scale:
+        return value
+    return value * base_scale / level_scale
+
+
+def build_skeleton(
+    output_path: str,
+    dtype: str,
+    input_path: str | None = None,
+    num_channels: int | None = None,
+    channel_labels: list[str] | None = None,
+    zarr_format: int | None = None,
+    data_type: str | None = None,
+    num_levels: int | None = None,
+    crop: dict[str, tuple[int | None, int | None]] | None = None,
+    shape: list[int] | None = None,
+    axis_names: list[str] | None = None,
+    scale: list[float] | None = None,
+    chunks: list[int] | None = None,
+    translation: list[float] | None = None,
+) -> None:
+    crop = {axis: bounds for axis, bounds in (crop or {}).items() if bounds != (None, None)}
+
+    if input_path is not None:
+        _build_from_input(
+            output_path, dtype, input_path, num_channels, channel_labels,
+            zarr_format, data_type, num_levels, crop,
+        )
+        return
+
+    if num_channels is not None:
+        raise ValueError(
+            "--num-channels requires --input-zarr -- with no source there's no default "
+            "channel count to override; put the channel count in --shape directly."
+        )
+    if crop:
+        raise ValueError(
+            "--<axis>-min/--<axis>-max crop bounds require --input-zarr -- with no source "
+            "there's no extent to crop from; state the cropped shape directly in --shape."
+        )
+    if num_levels is not None and num_levels != 1:
+        raise ValueError(
+            f"No --input-zarr given: output is always single-level, got --num-levels {num_levels}."
+        )
+    missing = [name for name, val in [("--shape", shape), ("--axes", axis_names),
+                                       ("--scale", scale), ("--chunks", chunks)] if val is None]
+    if missing:
+        raise ValueError(f"No --input-zarr given: {', '.join(missing)} required.")
+
+    _build_explicit(
+        output_path, dtype, shape, axis_names, scale, chunks,
+        translation, zarr_format, data_type, channel_labels,
+    )
+
+
+def _build_from_input(output_path: str, dtype: str, input_path: str,
+                       num_channels: int | None, channel_labels: list[str] | None,
+                       zarr_format: int | None, data_type: str | None,
+                       num_levels: int | None,
+                       crop: dict[str, tuple[int | None, int | None]]) -> None:
     src_group = zarr.open(input_path, mode="r")
     zattrs = dict(src_group.attrs)
     multiscales = zattrs.get("multiscales", [])
@@ -36,55 +149,105 @@ def build_skeleton(input_path: str, output_path: str, dtype: str,
         (axis.get("name") if isinstance(axis, dict) else axis) for axis in axes_meta
     )
     channel_axis_index = axis_names.index("c") if "c" in axis_names else None
-    t_axis_index = axis_names.index("t") if "t" in axis_names else None
 
     if num_channels is not None and channel_axis_index is None:
         raise ValueError(
             f"Input axes {axis_names} contain no 'c' axis; cannot place {num_channels} "
             "output channels."
         )
-    if (t_min is not None or t_max is not None) and t_axis_index is None:
-        raise ValueError(
-            f"Input axes {axis_names} contain no 't' axis; cannot apply --t-min/--t-max."
-        )
+    for axis in crop:
+        if axis not in axis_names:
+            raise ValueError(
+                f"Input axes {axis_names} contain no '{axis}' axis; cannot apply "
+                f"--{axis}-min/--{axis}-max."
+            )
 
     # Default: output format matches the input's own storage format, unless
     # explicitly overridden.
     if zarr_format is None:
-        zarr_format = _detect_input_zarr_format(src_group)
+        zarr_format = detect_zarr_format(src_group)
 
     datasets = multiscales[0]["datasets"]
+    if num_levels is not None:
+        if num_levels < 1:
+            raise ValueError(f"--num-levels must be >= 1, got {num_levels}")
+        if num_levels > len(datasets):
+            raise ValueError(
+                f"--num-levels {num_levels} exceeds the input's own {len(datasets)} "
+                "pyramid level(s)."
+            )
+        datasets = datasets[:num_levels]
+        zattrs["multiscales"][0]["datasets"] = datasets
     level_paths = [ds["path"] for ds in datasets]
 
-    if t_axis_index is not None:
-        base_shape_t = src_group[level_paths[0]].shape[t_axis_index]
-        t_start = t_min if t_min is not None else 0
-        t_end = t_max if t_max is not None else base_shape_t
-        if not (0 <= t_start < t_end <= base_shape_t):
-            raise ValueError(f"Bad t range [{t_start}, {t_end}) for extent {base_shape_t}.")
-        print(f"[Prealloc] Restricting t axis to [{t_start}, {t_end}) of {base_shape_t}")
-        # Storing info on time range in this way for now
-        zattrs["t_range"] = [t_start, t_end]
+    base_array = src_group[level_paths[0]]
+    base_scale = tuple(datasets[0]["coordinateTransformations"][0]["scale"])
+
+    # Resolve every requested crop's bounds at the base (finest included)
+    # level, in that level's own voxel coordinates, clipped to its real extent.
+    base_crop: dict[str, tuple[int, int]] = {}
+    for axis, (crop_min, crop_max) in crop.items():
+        axis_index = axis_names.index(axis)
+        extent = base_array.shape[axis_index]
+        start = crop_min if crop_min is not None else 0
+        end = crop_max if crop_max is not None else extent
+        if not (0 <= start < end <= extent):
+            raise ValueError(f"Bad {axis} range [{start}, {end}) for extent {extent}.")
+        base_crop[axis] = (start, end)
+        kind = "time" if axis == "t" else "spatial"
+        print(f"[Prealloc] Restricting {axis} axis ({kind}) to [{start}, {end}) of {extent}")
 
     shapes = []
     scales = []
+    translations = []
     for ds in datasets:
         src_array = src_group[ds["path"]]
-        shape = list(src_array.shape)
+        level_shape = list(src_array.shape)
+        level_scale = ds["coordinateTransformations"][0]["scale"]
+
+        # Existing translation on this dataset, if any -- cropping shifts
+        # relative to whatever the source already had, never assumes zero.
+        level_translation = [0.0] * len(axis_names)
+        for transform in ds["coordinateTransformations"]:
+            if transform.get("type") == "translation":
+                level_translation = list(transform["translation"])
+
         # Only remap the channel axis if --num-channels was explicitly given.
         if num_channels is not None:
-            shape[channel_axis_index] = num_channels
-        # Only restrict the t axis if --t-min/--t-max was explicitly given.
-        if t_axis_index is not None and (t_min is not None or t_max is not None):
-            shape[t_axis_index] = t_end - t_start
-        shapes.append(tuple(shape))
-        scales.append(tuple(ds["coordinateTransformations"][0]["scale"]))
+            level_shape[channel_axis_index] = num_channels
 
-    base_chunks = list(src_group[level_paths[0]].chunks)
+        for axis, (base_start, base_end) in base_crop.items():
+            axis_index = axis_names.index(axis)
+            # Crop bounds were given relative to the base level -- rescale to
+            # this level's own voxel coordinates before applying, since
+            # spatial axes are typically downsampled level-to-level (the time
+            # axis normally isn't, so this is a no-op for it).
+            start = _rescale_crop_bound(base_start, base_scale[axis_index], level_scale[axis_index])
+            end = _rescale_crop_bound(base_end, base_scale[axis_index], level_scale[axis_index])
+            start, end = int(math.floor(start)), min(int(math.ceil(end)), src_array.shape[axis_index])
+            level_shape[axis_index] = end - start
+            if axis in SPATIAL_AXES:
+                # Physical-space shift so this level's cropped origin still
+                # lines up with the source's own coordinate space -- NGFF
+                # applies translation after scale, so it's start-voxels *
+                # this level's own voxel size, not the base level's.
+                level_translation[axis_index] += start * level_scale[axis_index]
+
+        shapes.append(tuple(level_shape))
+        scales.append(tuple(level_scale))
+        translations.append(tuple(level_translation))
+
+    if "t" in base_crop:
+        # Informational only -- see module docstring for why time doesn't
+        # get a translation adjustment the way spatial axes do.
+        zattrs["t_range"] = list(base_crop["t"])
+
+    base_chunks = list(base_array.chunks)
     if num_channels is not None:
         base_chunks[channel_axis_index] = num_channels
-    if t_axis_index is not None:
-        base_chunks[t_axis_index] = min(base_chunks[t_axis_index], shapes[0][t_axis_index])
+    for axis in base_crop:
+        axis_index = axis_names.index(axis)
+        base_chunks[axis_index] = min(base_chunks[axis_index], shapes[0][axis_index])
 
     builder = ImagePyramidBuilder.from_shapes(
         shapes=shapes,
@@ -101,23 +264,20 @@ def build_skeleton(input_path: str, output_path: str, dtype: str,
 
     zattrs["multiscales"][0]["version"] = "0.5" if zarr_format == 3 else "0.4"
 
-    # Needed for cases like ilastik prob stores, which have probs for multiple channels/classes
-    if num_channels is not None and "omero" in zattrs:
-        max_val = 255.0 if dtype == "uint8" else 1.0
-        palette = ["FF0000", "00FF00", "0000FF", "FFFF00", "FF00FF", "00FFFF", "FFFFFF"]
-        labels = channel_labels or [f"channel_{i}" for i in range(num_channels)]
-        zattrs["omero"]["channels"] = [
-            {
-                "active": True,
-                "coefficient": 1.0,
-                "color": palette[i % len(palette)],
-                "family": "linear",
-                "inverted": False,
-                "label": label_name,
-                "window": {"end": max_val, "max": max_val, "min": 0.0, "start": 0.0},
-            }
-            for i, label_name in enumerate(labels)
-        ]
+    # Rewrite each level's own translation to reflect any crop-adjusted
+    # shift computed above (scale itself never changes under cropping).
+    for ds, level_translation in zip(zattrs["multiscales"][0]["datasets"], translations):
+        if any(level_translation):
+            transforms = [t for t in ds.get("coordinateTransformations", [])
+                          if t.get("type") != "translation"]
+            transforms.append({"type": "translation", "translation": list(level_translation)})
+            ds["coordinateTransformations"] = transforms
+
+    # Needed for cases like ilastik prob stores (multiple channels/classes)
+    # and for relabeling channels without changing their count.
+    if "c" in axis_names and (num_channels is not None or channel_labels is not None):
+        channel_count = num_channels if num_channels is not None else shapes[0][channel_axis_index]
+        zattrs.setdefault("omero", {})["channels"] = _omero_channels(channel_count, channel_labels, dtype)
 
     dest_root.attrs.update(zattrs)
 
@@ -126,43 +286,183 @@ def build_skeleton(input_path: str, output_path: str, dtype: str,
     print(f"[Prealloc] Output Zarr format: v{zarr_format}")
 
 
+def _build_explicit(output_path: str, dtype: str,
+                     shape: list[int], axis_names: list[str],
+                     scale: list[float], chunks: list[int],
+                     translation: list[float] | None,
+                     zarr_format: int, data_type: str | None,
+                     channel_labels: list[str] | None) -> None:
+    """No source zarr to inherit metadata from -- build a fresh, minimal
+    skeleton straight from caller-specified geometry."""
+    ndim = len(shape)
+    if len(axis_names) != ndim:
+        raise ValueError(f"--axes has {len(axis_names)} entries, --shape has {ndim}")
+    if len(scale) != ndim:
+        raise ValueError(f"--scale has {len(scale)} entries, --shape has {ndim}")
+    if len(chunks) != ndim:
+        raise ValueError(f"--chunks has {len(chunks)} entries, --shape has {ndim}")
+
+    translation = translation if translation is not None else [0.0] * ndim
+    if len(translation) != ndim:
+        raise ValueError(f"--translation has {len(translation)} entries, --shape has {ndim}")
+
+    builder = ImagePyramidBuilder.from_shapes(
+        shapes=[tuple(shape)],
+        base_scale=[tuple(scale)],
+        axes=tuple(axis_names),
+        level_paths=["0"],
+        chunks=tuple(chunks),
+        data_type=dtype,
+        zarr_format=zarr_format,
+    )
+
+    dest_root = zarr.open(output_path, mode="w", zarr_format=zarr_format)
+    builder.to_zarr(dest_root)
+
+    ome_version = "0.5" if zarr_format == 3 else "0.4"
+
+    zattrs = {
+        "multiscales": [{
+            "version": ome_version,
+            "name": "/",
+            "axes": [{"name": name, "type": _axis_type(name)} for name in axis_names],
+            "datasets": [{
+                "path": "0",
+                "coordinateTransformations": [
+                    {"type": "scale", "scale": list(scale)},
+                    {"type": "translation", "translation": list(translation)},
+                ],
+            }],
+            "type": "identity",
+        }]
+    }
+    if data_type is not None:
+        zattrs["data_type"] = data_type
+
+    if "c" in axis_names and channel_labels is not None:
+        c_axis = axis_names.index("c")
+        zattrs["omero"] = {"channels": _omero_channels(shape[c_axis], channel_labels, dtype)}
+
+    dest_root.attrs.update(zattrs)
+
+    print(f"[Prealloc] Created single-level skeleton: shape {tuple(shape)}")
+    print(f"[Prealloc] Output Zarr format: v{zarr_format}")
+
+
+def _parse_csv_ints(text: str) -> list[int]:
+    return [int(v) for v in text.split(",")]
+
+
+def _parse_csv_floats(text: str) -> list[float]:
+    return [float(v) for v in text.split(",")]
+
+
+def _parse_csv_strs(text: str) -> list[str]:
+    return [v for v in text.split(",")]
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Preallocate an empty OME-Zarr skeleton, optionally remapping the channel axis."
+        description="Preallocate an empty OME-Zarr skeleton -- either derived from an "
+                     "existing input zarr's own metadata, or from explicit geometry."
     )
-    parser.add_argument("--input-zarr", required=True)
+    parser.add_argument("--input-zarr", default=None,
+                         help="Derive geometry and inherit metadata from this existing "
+                              "zarr. Mutually exclusive with --shape/--axes/--scale/"
+                              "--chunks, which are required if this is omitted.")
     parser.add_argument("--output-zarr", required=True)
     parser.add_argument("--dtype", choices=["float32", "uint8", "int32", "uint16", "uint32"],
                          default="float32")
     parser.add_argument("--num-channels", type=int, default=None,
-                         help="Number of output channels. Omit to keep the source's own "
-                              "channel count unchanged (no remapping).")
+                         help="Requires --input-zarr. Number of output channels, "
+                              "overriding the source's own channel count.")
     parser.add_argument("--channel-labels", type=str, default=None,
-                         help="Comma-separated channel names, matching --num-channels in length. "
-                              "Only used if --num-channels is given.")
+                         help="Comma-separated channel names. With --input-zarr, matches "
+                              "--num-channels in length if given, else the source's own "
+                              "channel count. Without --input-zarr, matches --shape's "
+                              "channel-axis size.")
     parser.add_argument("--zarr-format", type=int, choices=[2, 3], default=None,
-                         help="Output Zarr storage format. Defaults to matching the input's own "
-                              "format. Set explicitly to force v2 or v3 output regardless of input.")
+                         help="Output Zarr storage format. With --input-zarr, defaults to "
+                              "matching its format. REQUIRED without --input-zarr.")
     parser.add_argument("--data-type", type=str, default=None,
-                         choices=["intensity", "label", "probability"],
-                         help="Override the top-level 'data_type' metadata field. Omit to keep "
-                              "whatever the source image had (e.g. 'intensity').")
-    parser.add_argument("--t-min", type=int, default=None,
-                         help="First timepoint index to include (inclusive). Defaults to 0.")
-    parser.add_argument("--t-max", type=int, default=None,
-                         help="Last timepoint index to include (exclusive). Defaults to the "
-                              "input's full time extent.")
-    args = parser.parse_args()
-    channel_labels = args.channel_labels.split(",") if args.channel_labels else None
-    if channel_labels and args.num_channels is None:
-        parser.error("--channel-labels requires --num-channels to also be set.")
-    if channel_labels and len(channel_labels) != args.num_channels:
-        parser.error(f"--channel-labels has {len(channel_labels)} entries, "
-                     f"but --num-channels is {args.num_channels}")
+                         choices=["intensity", "label", "probability"])
+    parser.add_argument("--num-levels", type=int, default=None,
+                         help="Requires --input-zarr. Restrict to the first N pyramid "
+                              "levels. Without --input-zarr, output is always single-level.")
+    for axis in CROP_AXES:
+        parser.add_argument(f"--{axis}-min", type=int, default=None,
+                             help=f"Requires --input-zarr. Crop the {axis} axis to start here "
+                                  f"(voxel coords at the finest included level).")
+        parser.add_argument(f"--{axis}-max", type=int, default=None,
+                             help=f"Requires --input-zarr. Crop the {axis} axis to end here "
+                                  f"(exclusive, voxel coords at the finest included level).")
+    parser.add_argument("--shape", type=str, default=None,
+                         help="No --input-zarr: comma-separated ints, e.g. '10,1024,1024'.")
+    parser.add_argument("--axes", type=str, default=None,
+                         help="No --input-zarr: comma-separated axis names matching "
+                              "--shape, e.g. 'z,y,x'.")
+    parser.add_argument("--scale", type=str, default=None,
+                         help="No --input-zarr: comma-separated per-axis voxel size, "
+                              "matching --shape.")
+    parser.add_argument("--chunks", type=str, default=None,
+                         help="No --input-zarr: comma-separated per-axis chunk size, "
+                              "matching --shape. Required -- never inferred (e.g. a "
+                              "stitching merge target needs this set to the tiling "
+                              "stride so tile writes land on chunk boundaries).")
+    parser.add_argument("--translation", type=str, default=None,
+                         help="No --input-zarr: comma-separated per-axis physical-space "
+                              "origin, matching --shape. Defaults to all zeros if omitted.")
 
-    build_skeleton(args.input_zarr, args.output_zarr, args.dtype,
-                    args.num_channels, channel_labels, args.zarr_format, args.data_type,
-                    args.t_min, args.t_max)
+    args = parser.parse_args()
+
+    channel_labels = _parse_csv_strs(args.channel_labels) if args.channel_labels else None
+    crop = {axis: (getattr(args, f"{axis}_min"), getattr(args, f"{axis}_max")) for axis in CROP_AXES}
+    crop_given = {axis: bounds for axis, bounds in crop.items() if bounds != (None, None)}
+    explicit_mode_args_given = any([args.shape, args.axes, args.scale, args.chunks])
+
+    if args.input_zarr and explicit_mode_args_given:
+        parser.error("--input-zarr and --shape/--axes/--scale/--chunks are mutually "
+                     "exclusive.")
+    if not args.input_zarr and not explicit_mode_args_given:
+        parser.error("Provide either --input-zarr or --shape/--axes/--scale/--chunks.")
+
+    if args.input_zarr:
+        if channel_labels and args.num_channels is not None and len(channel_labels) != args.num_channels:
+            parser.error(f"--channel-labels has {len(channel_labels)} entries, "
+                         f"but --num-channels is {args.num_channels}")
+        if args.num_levels is not None and args.num_levels < 1:
+            parser.error(f"--num-levels must be >= 1, got {args.num_levels}")
+
+        build_skeleton(
+            output_path=args.output_zarr, dtype=args.dtype, input_path=args.input_zarr,
+            num_channels=args.num_channels, channel_labels=channel_labels,
+            zarr_format=args.zarr_format, data_type=args.data_type,
+            num_levels=args.num_levels, crop=crop_given,
+        )
+    else:
+        if not (args.shape and args.axes and args.scale and args.chunks):
+            parser.error("Requires --shape, --axes, --scale, and --chunks all set.")
+        if args.zarr_format is None:
+            parser.error("--zarr-format is required without --input-zarr.")
+        if args.num_levels is not None and args.num_levels != 1:
+            parser.error(f"Output is always single-level without --input-zarr; "
+                         f"--num-levels must be 1 if given, got {args.num_levels}.")
+        if args.num_channels is not None:
+            parser.error("--num-channels requires --input-zarr -- channel count comes "
+                         "from --shape directly otherwise.")
+        if crop_given:
+            parser.error("--<axis>-min/--<axis>-max require --input-zarr -- state the "
+                         "cropped shape directly in --shape otherwise.")
+
+        build_skeleton(
+            output_path=args.output_zarr, dtype=args.dtype,
+            shape=_parse_csv_ints(args.shape), axis_names=_parse_csv_strs(args.axes),
+            scale=_parse_csv_floats(args.scale), chunks=_parse_csv_ints(args.chunks),
+            translation=_parse_csv_floats(args.translation) if args.translation else None,
+            zarr_format=args.zarr_format, data_type=args.data_type,
+            channel_labels=channel_labels,
+        )
+
     print(f"[Prealloc] Done: {args.output_zarr}")
 
 

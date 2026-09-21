@@ -1,11 +1,102 @@
 """Generic helpers for tile/ROI-based reading and writing of Zarr stores.
-No tool-specific dependencies.
+
+compute_output_geometry/_read_tile_rows/_read_input_calibration moved here
+from the now-retired preallocate_empty_zarr.py: the stitched multi-tile
+merge store is built via the general-purpose preallocate_zarr.py
+--shape/--axes/--scale/--chunks/--translation mode instead of a
+bespoke OMEZarrStore-based script, and this is the geometry math that feeds
+that mode. write_relabeled_tile.py also needs compute_output_geometry/
+_read_tile_rows for its own write-position math, so this is the one place
+both the merge-store-creation step and the per-tile write step can import
+it from, without either depending on preallocate_zarr.py itself.
 """
 
+import csv
+
 import numpy as np
+import zarr
+
+from ome_zarr_store import detect_ome_version, detect_zarr_format
 
 
 AXIS_NAMES = ("t", "c", "z", "y", "x")
+
+
+def _read_tile_rows(tiles_csv: str) -> list[dict[str, str]]:
+    with open(tiles_csv, "r", newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _has_z(rows: list[dict[str, str]]) -> bool:
+    return bool(rows[0].get("z_min", "").strip())
+
+
+def _bounds(rows: list[dict[str, str]], axis: str) -> tuple[int, int]:
+    mins = [int(row[f"{axis}_min"]) for row in rows]
+    maxs = [int(row[f"{axis}_max"]) for row in rows]
+    return min(mins), max(maxs)
+
+
+def compute_output_geometry(
+    rows: list[dict[str, str]],
+) -> tuple[list[str], tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
+    """Derive the merged output's geometry from every tile row of one source image.
+
+    Returns
+    -------
+    axis_order : list[str]
+        ``["z", "y", "x"]`` or ``["y", "x"]``, matching every other tuple below.
+    shape : tuple[int, ...]
+        Union of every tile's ROI bounds -- the output array's own shape.
+    chunks : tuple[int, ...]
+        Tiling stride (`tile_size - tile_overlap`) per axis -- the output
+        store's chunk size.
+    global_min : tuple[int, ...]
+        The output array's origin, in the original image's own voxel
+        coordinates. Every tile's write position is its own ROI start minus
+        this.
+    """
+    axis_order = ["z", "y", "x"] if _has_z(rows) else ["y", "x"]
+
+    bounds = {axis: _bounds(rows, axis) for axis in axis_order}
+    shape = tuple(bounds[axis][1] - bounds[axis][0] for axis in axis_order)
+    global_min = tuple(bounds[axis][0] for axis in axis_order)
+
+    first = rows[0]
+    chunks = tuple(
+        int(first[f"tile_size_{axis}"]) - int(first[f"tile_overlap_{axis}"]) for axis in axis_order
+    )
+
+    return axis_order, shape, chunks, global_min
+
+
+def _read_input_calibration(
+    input_image_path: str, resolution_level: int, axis_order: list[str]
+) -> tuple[str, int, tuple[float, ...]]:
+    """Detect the input image's OME version/Zarr format, and read its
+    per-axis voxel scale at `resolution_level` -- for calibrating a merge
+    output store whose shape comes from `compute_output_geometry`, not from
+    this image."""
+    root = zarr.open(input_image_path, mode="r")
+    ome_version = detect_ome_version(root)
+    zarr_format = detect_zarr_format(root)
+
+    attrs = root.attrs
+    ome = attrs.get("ome")
+    multiscales = ome["multiscales"] if isinstance(ome, dict) and "multiscales" in ome else attrs["multiscales"]
+    ms = multiscales[0]
+    dataset = ms["datasets"][resolution_level]
+    axes = [axis["name"] for axis in ms["axes"]]
+
+    scale_by_axis = {"x": 1.0, "y": 1.0, "z": 1.0}
+    for transform in dataset["coordinateTransformations"]:
+        if transform.get("type") == "scale":
+            for name, value in zip(axes, transform["scale"]):
+                if name in scale_by_axis:
+                    scale_by_axis[name] = float(value)
+
+    resolution = tuple(scale_by_axis[axis] for axis in axis_order)
+    return ome_version, zarr_format, resolution
 
 
 def parse_optional_int(val):
