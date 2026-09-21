@@ -1,5 +1,6 @@
 include { TILE_CONSTRUCTOR      } from '../../../modules/local/tileconstructor/main'
-include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_SAM_ZARR_MIF_TILED} from '../../../modules/local/cellpose_sam_zarr_mif/main'include { PREALLOCATE_ZARR      } from '../../../modules/local/preallocate_zarr/main'
+include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_SAM_ZARR_MIF_TILED} from '../../../modules/local/cellpose_sam_zarr_mif/main'
+include { PREALLOCATE_ZARR      } from '../../../modules/local/preallocate_zarr/main'
 include { FIND_TILE_NEIGHBORS   } from '../../../modules/local/find_tile_neighbors/main'
 include { LOCAL_LABEL_MATCHER   } from '../../../modules/local/local_label_matcher/main'
 include { LABEL_SOLVER          } from '../../../modules/local/label_solver/main'
