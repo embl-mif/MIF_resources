@@ -1,10 +1,52 @@
 include { TILE_CONSTRUCTOR      } from '../../../modules/local/tileconstructor/main'
-include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_SAM_ZARR_MIF_TILED} from '../../../modules/local/cellpose_sam_zarr_mif/main'
-include { PREALLOCATE_ZARR      } from '../../../modules/local/preallocate_zarr/main'
+include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_SAM_ZARR_MIF_TILED} from '../../../modules/local/cellpose_sam_zarr_mif/main'include { PREALLOCATE_ZARR      } from '../../../modules/local/preallocate_zarr/main'
 include { FIND_TILE_NEIGHBORS   } from '../../../modules/local/find_tile_neighbors/main'
 include { LOCAL_LABEL_MATCHER   } from '../../../modules/local/local_label_matcher/main'
 include { LABEL_SOLVER          } from '../../../modules/local/label_solver/main'
 include { WRITE_RELABELED_TILE  } from '../../../modules/local/write_relabeled_tile/main'
+
+process CLEANUP_TILE_SCRATCH {
+    tag "$meta.id"
+    label 'process_low'
+
+    input:
+    tuple val(meta), val(mask_store), val(scratch_dir)
+
+    output:
+    tuple val(meta), val(mask_store), emit: mask
+    path "versions.yml",              emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
+
+    script:
+    """
+    # Guard against ever rm -rf'ing something unexpected. If scratch_dir
+    # doesn't look like the per-dataset tile-scratch path it's supposed to
+    # be (e.g. meta.id or \$USER resolved empty upstream, collapsing the
+    # path to something much broader), refuse rather than delete blind.
+    case "${scratch_dir}" in
+        */cellpose_tiles_published/*)
+            ;;
+        *)
+            echo "[Cleanup] Refusing to remove unexpected path: ${scratch_dir}" >&2
+            exit 1
+            ;;
+    esac
+
+    if [ -d "${scratch_dir}" ]; then
+        rm -rf "${scratch_dir}"
+        echo "[Cleanup] Removed ${scratch_dir}"
+    else
+        echo "[Cleanup] ${scratch_dir} already absent, nothing to remove"
+    fi
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        cleanup: "rm -rf"
+    END_VERSIONS
+    """
+}
 
 workflow TILED_CELLPOSE_SAM_ZARR {
 
@@ -82,7 +124,9 @@ workflow TILED_CELLPOSE_SAM_ZARR {
 
     ch_image_tiles_checked = ch_image_tiles.map { meta, image, localImage, imageUri ->
         def expectedPath = file("/scratch/${System.getenv('USER')}/cellpose_tiles_published/${meta.source_dataset_id}/${meta.labels_output_name}")
-        tuple(meta, image, localImage, imageUri, expectedPath, expectedPath.exists())
+        def markerFiles = ['.zgroup', 'zarr.json'].collect { file("${expectedPath}/${it}") }
+        def isDone = expectedPath.exists() && markerFiles.any { it.exists() && it.length() > 0 }
+        tuple(meta, image, localImage, imageUri, expectedPath, isDone)
     }
 
     ch_to_run = ch_image_tiles_checked
@@ -187,8 +231,16 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .map { meta, store -> tuple(meta.id, meta, store) }
         .join( ch_write_confirmed )
         .map { _srcId, meta, store, _confirmations -> tuple(meta, store) }
- 
+
+    ch_cleanup_input = ch_mask_ready.map { meta, store ->
+        def scratchDir = "/scratch/${System.getenv('USER')}/cellpose_tiles_published/${meta.id}"
+        tuple(meta, store, scratchDir)
+    }
+
+    CLEANUP_TILE_SCRATCH(ch_cleanup_input)
+    ch_versions = ch_versions.mix(CLEANUP_TILE_SCRATCH.out.versions)
+
     emit:
-    mask     = ch_mask_ready   // channel: [ meta, merged_mask.ome.zarr ]
-    versions = ch_versions     // channel: [ versions.yml ]
+    mask     = CLEANUP_TILE_SCRATCH.out.mask   // channel: [ meta, merged_mask.ome.zarr ]
+    versions = ch_versions                     // channel: [ versions.yml ]
 }
