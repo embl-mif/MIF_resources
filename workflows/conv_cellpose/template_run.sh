@@ -20,10 +20,12 @@ export LIB_PATH="/home/$USER/projects/mif-resources/lib" # <--- MODIFY
 export WDIR="/PATH/TO/WORK/DIRECTORY" # <---------------- MODIFY TO YOUR DESIRED WORK LOCATION
 export CSV_PATH="/PATH/TO/batch.csv" # <----------------- MODIFY
 export OUTDIR="/scratch/$USER/conv_cellpose/results" # <--- MODIFY
+export MDL="/g/mif-hd/shared/cellpose_models/cpsam"
 
 nextflow run "$NF_PATH" \
     -lib "$LIB_PATH" \
     -work-dir "$WDIR" \
     --input_csv "$CSV_PATH" \
     --outdir "$OUTDIR" \
+    --cellpose_model_path "$MDL" \
     -resume

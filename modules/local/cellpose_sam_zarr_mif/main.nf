@@ -76,6 +76,9 @@ process CELLPOSE_SAM_ZARR_MIF {
     def cellpose_model_arg = pretrained_cellpose_model.name != 'NO_MODEL_FILE' ? "-m ${pretrained_cellpose_model}" : ""
     // Use direct_output_path for untiled workflows
     output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
+    // Only ask Nextflow to stage/track this as a real output when it lives in the
+    // task work dir. When meta.labels_output_name is an absolute path (written
+    // directly to shared storage), leave this null so nothing is declared.
     staged_output_zarr = new File(output_zarr.toString()).isAbsolute() ? null : output_zarr
     def x_min_arg = Utils.optionalCliArg("--x-min", meta.x_min)
     def x_max_arg = Utils.optionalCliArg("--x-max", meta.x_max)
