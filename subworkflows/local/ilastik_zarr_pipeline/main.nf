@@ -36,7 +36,7 @@ workflow ILASTIK_ZARR_PIPELINE {
     ch_prealloc_unique = ch_prealloc_input
         .map { meta, raw_zarr, output_zarr -> tuple(output_zarr, meta, raw_zarr) }
         .unique { it[0] }
-        .map { output_zarr, meta, raw_zarr -> tuple(meta, raw_zarr, noTilesCsv, '', output_zarr) }
+        .map { output_zarr, meta, raw_zarr -> tuple(meta, raw_zarr, noTilesCsv, output_zarr) }
 
     PREALLOCATE_ZARR(ch_prealloc_unique)
     ch_versions = ch_versions.mix(PREALLOCATE_ZARR.out.versions)
