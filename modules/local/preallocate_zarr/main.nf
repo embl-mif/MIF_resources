@@ -39,7 +39,7 @@ process PREALLOCATE_ZARR {
 
     if (!input_zarr) {
     error "PREALLOCATE_ZARR (${meta.id}): input_zarr (the original OME-Zarr image) is required."
-}
+    }
 
     def command
     if (from_tiles) {
