@@ -8,11 +8,6 @@ include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam
 
 workflow {
 
-    def resolveOutput = { value, fallback ->
-        def v = Utils.normalizeOptionalText(value)
-        !v ? fallback : (v.startsWith('/') ? v : file(v).name)
-    }
-
     def repoRootDir = workflow.projectDir.getParent().getParent()
 
     def default_zarr_dir = "${file(params.default_outdir)}/zarr"

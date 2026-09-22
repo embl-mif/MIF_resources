@@ -62,7 +62,7 @@ process CELLPOSE_SAM_ZARR_MIF {
 
     output:
     tuple val(meta), val("${task.workDir.resolve(output_zarr.toString())}"), emit: labels
-    path output_zarr, emit: labels_dir // to track tiles that are completed and skip them
+    path staged_output_zarr, optional: true, emit: labels_dir // to track tiles that are completed and skip them
 
     script:
     def image = image_uri ?: local_image
@@ -76,6 +76,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     def cellpose_model_arg = pretrained_cellpose_model.name != 'NO_MODEL_FILE' ? "-m ${pretrained_cellpose_model}" : ""
     // Use direct_output_path for untiled workflows
     output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
+    staged_output_zarr = new File(output_zarr.toString()).isAbsolute() ? null : output_zarr
     def x_min_arg = Utils.optionalCliArg("--x-min", meta.x_min)
     def x_max_arg = Utils.optionalCliArg("--x-max", meta.x_max)
     def y_min_arg = Utils.optionalCliArg("--y-min", meta.y_min)
