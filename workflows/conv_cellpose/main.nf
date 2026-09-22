@@ -64,7 +64,7 @@ workflow {
                 error(
                     "zarr_output must be an absolute path (dataset_id=${dataset_id}): " +
                     "got '${requested_zarr_output}'. Leave the column blank to use the " +
-                    "default location under outdir instead."
+                    "default location under default_outdir instead."
                 )
             }
             def resolved_zarr_output = requested_zarr_output
@@ -76,7 +76,7 @@ workflow {
                 error(
                     "labels_output must be an absolute path (dataset_id=${dataset_id}): " +
                     "got '${requested_labels_output}'. Leave the column blank to use the " +
-                    "default location under outdir instead."
+                    "default location under default_outdir instead."
                 )
             }
             def resolved_labels_output = requested_labels_output

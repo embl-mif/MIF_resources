@@ -11,7 +11,7 @@ workflow {
 
     def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
-    def default_zarr_dir = "${file(params.outdir)}/zarr"
+    def default_zarr_dir = "${file(params.default_outdir)}/zarr"
 
     pymif_inputs_ch = input_csv_ch
         .splitCsv(header: true)
