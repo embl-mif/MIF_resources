@@ -12,6 +12,7 @@ workflow {
     def meta = [
         id                 : params.dataset_id ?: "test_dataset",
         output_dir         : "${file(params.outdir)}/tracking",
+        output_zarr        : "${file(params.outdir)}/tracking/${dataset_id}_tracked.zarr"
         foreground_channel : 1,      // "cells"
         contours_channel   : null,
         raw_channel        : 0,      // brightfield
