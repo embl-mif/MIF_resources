@@ -8,6 +8,12 @@ include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam
 
 workflow {
 
+    def repoRootDir = workflow.projectDir.getParent().getParent()
+
+    def default_zarr_dir = "${file(params.default_outdir)}/zarr"
+    def default_mip_dir = "${file(params.default_outdir)}/mip"
+    def default_labels_dir = "${file(params.default_outdir)}/labels"
+
     ch_cellpose_model = Channel.value(
         params.cellpose_model_path
             ? file(params.cellpose_model_path, checkIfExists: true)
@@ -19,10 +25,7 @@ workflow {
     input_csv_ch = Channel
         .fromPath(params.input_csv, checkIfExists: true)
 
-    def resolveOutput = { value, fallback ->
-        def v = Utils.normalizeOptionalText(value)
-        !v ? fallback : (v.startsWith('/') ? v : file(v).name)
-    }
+
 
     pymif_inputs_ch = input_csv_ch
         .splitCsv(header: true)
@@ -33,9 +36,27 @@ workflow {
             def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
                 ?: "${input_dataset.simpleName}_${index + 1}"
 
-            def resolved_zarr_output = resolveOutput(row.output, "${dataset_id}.ome.zarr")
+            def requested_zarr_output = Utils.normalizeOptionalText(row.output)
+            if (requested_zarr_output && !file(requested_zarr_output).isAbsolute()) {
+                error(
+                    "zarr_output must be an absolute path (dataset_id=${dataset_id}): " +
+                    "got '${requested_zarr_output}'. Leave the column blank to use the " +
+                    "default location under default_outdir instead."
+                )
+            }
+            def resolved_zarr_output = requested_zarr_output
+                ?: "${default_zarr_dir}/${dataset_id}.ome.zarr"
 
-            def resolved_mip_output = resolveOutput(row.mip_output, "${dataset_id}_mip.ome.zarr")
+            def requested_mip_output = Utils.normalizeOptionalText(row.mip_output)
+            if (requested_mip_output && !file(requested_mip_output).isAbsolute()) {
+                error(
+                    "mip_output must be an absolute path (dataset_id=${dataset_id}): " +
+                    "got '${requested_mip_output}'. Leave the column blank to use the " +
+                    "default location under default_outdir instead."
+                )
+            }
+            def resolved_mip_output = requested_mip_output
+                ?: "${default_mip_dir}/${dataset_id}_mip.ome.zarr"
 
             def diameter_value = Utils.normalizeOptionalText(row.cellpose_diameter)
             def niter_value = Utils.normalizeOptionalText(row.cellpose_niter)
@@ -46,7 +67,16 @@ workflow {
             def do_3D_text = Utils.normalizeOptionalText(row.do_3D)
             def do_3D_value = do_3D_text ?: false
 
-            def resolved_labels_output = resolveOutput(row.labels_output, "${dataset_id}_labels.ome.zarr")
+            def requested_labels_output = Utils.normalizeOptionalText(row.labels_output)
+            if (requested_labels_output && !file(requested_labels_output).isAbsolute()) {
+                error(
+                    "labels_output must be an absolute path (dataset_id=${dataset_id}): " +
+                    "got '${requested_labels_output}'. Leave the column blank to use the " +
+                    "default location under default_outdir instead."
+                )
+            }
+            def resolved_labels_output = requested_labels_output
+                ?: "${default_labels_dir}/${dataset_id}_labels.ome.zarr"
 
             def meta = row + [			
                 id                       : dataset_id,
