@@ -52,7 +52,7 @@ def format_as_flags(params: dict) -> str:
         start, end = params["bounds"][axis]
         flags.append(f"--{axis}-min {start}")
         flags.append(f"--{axis}-max {end}")
-        flags.append(f"--chunks {','.join(str(params['chunks'][axis]) for axis in params['axis_order'])}")
+    flags.append(f"--chunks {','.join(str(params['chunks'][axis]) for axis in params['axis_order'])}")
         return " ".join(flags)
 
 
