@@ -87,7 +87,7 @@ workflow {
                 tile_meta.z_max = (row.z_max && row.z_max != '') ? row.z_max as Integer : null
                 // t_min/t_max unchanged per tile
 
-                return [ tile_meta, raw_zarr, output_zarr ]
+                return [ tile_meta, raw_zarr, meta.output_zarr ]
             }
         }
     ch_project = Channel.value(file(params.ilastik_project))
