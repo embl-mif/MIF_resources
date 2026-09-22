@@ -30,6 +30,14 @@ workflow ILASTIK_ZARR_PIPELINE {
             prealloc_meta.num_channels   = channelInfo.num_channels
             prealloc_meta.channel_labels = channelInfo.channel_labels
             prealloc_meta.dtype          = "float32"
+            prealloc_meta.t_min = null
+            prealloc_meta.t_max = null
+            prealloc_meta.z_min = null
+            prealloc_meta.z_max = null
+            prealloc_meta.y_min = null
+            prealloc_meta.y_max = null
+            prealloc_meta.x_min = null
+            prealloc_meta.x_max = null
             tuple(prealloc_meta, raw_zarr, output_zarr)
         }
 
