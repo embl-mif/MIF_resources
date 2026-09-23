@@ -8,6 +8,7 @@ process PYMIF_CONVERSION {
 
     output:
     tuple val(meta),  val("${task.workDir.resolve(output_zarr.toString())}")   , emit: zarr
+    path staged_output_zarr, optional: true, emit: output_dir // to track tiles that are completed and skip them
     path "versions.yml"                  , emit: versions
 
     when:
@@ -15,6 +16,7 @@ process PYMIF_CONVERSION {
 
     script:
     output_zarr = meta.zarr_output_name ?: "${meta.id}.ome.zarr"
+    staged_output_zarr = new File(output_zarr.toString()).isAbsolute() ? null : output_zarr
 
 	def args = task.ext.args ?: ''
 

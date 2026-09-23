@@ -8,10 +8,12 @@ process PYMIF_MIP_ZARR {
 
     output:
     tuple val(meta), val("${task.workDir.resolve(output_mip.toString())}"), emit: zarr
+    path staged_output_mip, optional: true, emit: output_dir // to track tiles that are completed and skip them
     path "versions.yml"                       , emit: versions
 
     script:
 	output_mip = meta.mip_output_name ?: "${meta.id}_mip.ome.zarr"
+    staged_output_mip = new File(output_mip.toString()).isAbsolute() ? null : output_mip
     
 	def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
