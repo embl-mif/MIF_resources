@@ -1,4 +1,4 @@
-process PYMIF_FILTER_LABELS {
+process PYMIF_FILTER {
     tag "${meta.id}"
     label 'process_high'
     container 'ghcr.io/grinic/pymif:2026.9.1'

@@ -1,4 +1,4 @@
-# conv_mip_labelmask_cellpose
+# conv_mip_label_filter_mask_cellpose
 
 Runs each dataset through five stages:
 
@@ -94,7 +94,7 @@ sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,sample_02.ome.zarr,,2,0
 ```bash
 module load Nextflow/25.10.1
 
-nextflow run /path/to/mif-resources/workflows/conv_mip_labelmask_cellpose/main.nf \
+nextflow run /path/to/mif-resources/workflows/conv_mip_label_filter_mask_cellpose/main.nf \
     -lib /path/to/mif-resources/lib \
     --input_csv /path/to/input.csv \
     -resume

@@ -3,7 +3,7 @@
 nextflow.enable.dsl = 2
 
 include { PYMIF_CONVERSION              } from '../../modules/local/pymif_conversion/main'
-include { PYMIF_MIP_ZARR                } from '../../modules/local/pymif_mip_zarr/main'
+include { PYMIF_MIP                     } from '../../modules/local/pymif_mip/main'
 include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
 workflow {
@@ -110,9 +110,9 @@ workflow {
      * Expected output:
      * tuple(meta, mip_zarr)
      */
-    PYMIF_MIP_ZARR(PYMIF_CONVERSION.out.zarr)
+    PYMIF_MIP(PYMIF_CONVERSION.out.zarr)
 
-    ch_cellpose_inputs = PYMIF_MIP_ZARR.out.zarr
+    ch_cellpose_inputs = PYMIF_MIP.out.zarr
         .map { meta, zarr_path ->
             def (local_image, image_uri) = Utils.splitImageInput(
                 zarr_path,

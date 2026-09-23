@@ -5,7 +5,7 @@ label against every requested intensity channel with
 `skimage.measure.regionprops`, and writes one CSV of features per dataset.
 It is independent of how the labels were produced, so it can be run after
 any of this repo's segmentation workflows (`conv_cellpose`,
-`conv_mip_cellpose`, `conv_mip_labelmask_cellpose`, `conv_tiled_cellpose`,
+`conv_mip_cellpose`, `conv_mip_label_filter_mask_cellpose`, `conv_tiled_cellpose`,
 `ilastik_*`, `ultrack`, ...), or against any other OME-Zarr label store.
 
 ## Input CSV
