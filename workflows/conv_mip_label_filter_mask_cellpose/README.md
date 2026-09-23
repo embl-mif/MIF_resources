@@ -1,17 +1,22 @@
 # conv_mip_label_filter_mask_cellpose
 
-Runs each dataset through five stages:
+Runs each dataset through seven stages:
 
 1. Convert to OME-Zarr with `pymif 2zarr`.
 2. Build a multiscale 2D maximum-intensity projection (MIP) over Z.
-3. Otsu-threshold one MIP channel (`mask_channel`), label it with
-   `skimage.measure.label`, measure every object with `regionprops`, and drop
-   objects outside the requested area (and any other regionprops-based)
-   bounds.
-4. Zero that channel outside the kept objects, and write a new
-   single-resolution OME-Zarr holding every original MIP channel plus this
-   masked channel appended at the end.
-5. Segment that new OME-Zarr with Cellpose-SAM, using the appended masked
+3. Otsu-threshold one MIP channel (`otsu_channel`) and label it with
+   `skimage.measure.label`, rebuilding the full multiscale pyramid (same
+   number of levels, chunksize and downsample factors as the MIP) so label
+   IDs stay consistent across every resolution.
+4. Measure every Otsu-labeled object against the MIP (every channel by
+   default) with `skimage.measure.regionprops`.
+5. Keep only the objects whose measured row satisfies the requested area
+   (and/or any other regionprops-based) limits, and relabel the survivors to
+   a contiguous `1..N` id space.
+6. Zero `clean_channel` of the MIP outside the filtered objects, and append
+   it as a new channel of a new OME-Zarr (every original MIP channel plus
+   this one).
+7. Segment that new OME-Zarr with Cellpose-SAM, using the appended clean
    channel together with any other channel as `cellpose_channels`.
 
 ## Input CSV
@@ -19,36 +24,66 @@ Runs each dataset through five stages:
 One dataset per row. Required columns:
 
 - `input`: path to the input microscopy dataset.
-- `mask_channel`: zero-based index, in the MIP output, of the channel to
-  threshold and mask.
+- `otsu_channel`: zero-based index, in the MIP output, of the channel to
+  Otsu-threshold and label.
 
 ### Output columns
 
 | CSV column | Purpose |
 | --- | --- |
 | `dataset_id` | Identifier used in task names and default output names. Defaults to `<input basename>_<row number>`. |
-| `output` | Name of the converted OME-Zarr. An absolute path is kept as-is; anything else is used as a plain filename and stays in the Nextflow work directory. |
-| `mip_output` | Name of the MIP OME-Zarr, same rule as `output`. Defaults to `<dataset_id>_mip.ome.zarr`. |
-| `mask_output` | Name of the masked OME-Zarr passed to Cellpose, same rule as `output`. Defaults to `<dataset_id>_masked.ome.zarr`. |
-| `labels_output` | Name of the Cellpose label OME-Zarr, same rule as `output`. Defaults to `<dataset_id>_labels.ome.zarr`. |
+| `output` | Name of the converted OME-Zarr. Must be absolute if set. Defaults to `<default_outdir>/zarr/<dataset_id>.ome.zarr`. |
+| `mip_output` | Name of the MIP OME-Zarr, same rule. Defaults to `<default_outdir>/mip/<dataset_id>_mip.ome.zarr`. |
+| `otsu_output` | Name of the Otsu label OME-Zarr, same rule. Defaults to `<default_outdir>/otsu_labels/<dataset_id>_otsu_labels.ome.zarr`. |
+| `features_output` | Name of the (pre-filter) measurements CSV, same rule. Defaults to `<default_outdir>/measurements/<dataset_id>_features.csv`. |
+| `filter_output` | Name of the filtered label OME-Zarr, same rule. Defaults to `<default_outdir>/filtered/<dataset_id>_filtered_labels.ome.zarr`. |
+| `filter_csv_output` | Name of the filtered (post-filter, relabeled) measurements CSV, same rule. Defaults to `<default_outdir>/filtered/<dataset_id>_filtered_labels.csv`. |
+| `clean_output` | Name of the OME-Zarr passed to Cellpose, same rule. Defaults to `<default_outdir>/clean/<dataset_id>_clean.ome.zarr`. |
+| `labels_output` | Name of the Cellpose label OME-Zarr, same rule. Defaults to `<default_outdir>/labels/<dataset_id>_labels.ome.zarr`. |
 
-### Label-mask columns
+### Otsu-label columns
 
 | CSV column | Purpose |
 | --- | --- |
-| `mask_channel` | **Required.** Zero-based channel index (in the MIP output) to Otsu-threshold, label, filter and mask. |
-| `mask_resolution_level` | MIP pyramid level to read `mask_channel` from. Defaults to `resolution_level`, or `--resolution_level` (0) if that is also blank. |
-| `mask_otsu_multiplier` | Multiplier applied to the Otsu threshold before binarizing (e.g. `1.2` for a stricter cutoff). Defaults to `1.0`. |
-| `mask_min_area` | Minimum object area, in pixels, to keep. Blank means no lower bound. |
-| `mask_max_area` | Maximum object area, in pixels, to keep. Blank means no upper bound. |
-| `mask_intensity_channels` | Channel indices (in the MIP output), separated by `;`, `,` or whitespace, to also measure per-object fluorescence intensity on, for use in `mask_filters`. `mask_channel` itself is always measured. |
-| `mask_filters` | Extra `property:min:max` bounds on any measured property, separated by `;`. Either bound may be left empty. Available properties include every `skimage.measure.regionprops` shape property (`solidity`, `eccentricity`, `extent`, `major_axis_length`, ...), the derived `form_factor` = `4*pi*area/perimeter^2`, and fluorescence intensity: `mean_intensity`/`min_intensity`/`max_intensity` (for `mask_channel`) and `mean_intensity_ch<c>`/`min_intensity_ch<c>`/`max_intensity_ch<c>` for every channel `c` listed in `mask_intensity_channels`. Example: `solidity:0.8:;mean_intensity_ch2:150:` keeps objects with solidity ≥ 0.8 and a mean intensity of at least 150 in channel `2`. Unknown property names raise a clear error listing what was measured. |
+| `otsu_channel` | **Required.** Zero-based channel index (in the MIP output) to Otsu-threshold and label. |
+| `otsu_resolution_level` | MIP pyramid level to threshold+label at; every other level is rebuilt from it. Defaults to `resolution_level`, or `--resolution_level` (0) if that is also blank. |
+| `otsu_multiplier` | Multiplier applied to the Otsu threshold before binarizing (e.g. `1.2` for a stricter cutoff). Defaults to `1.0`. |
 
-The masked channel is appended after every original MIP channel (e.g. if the
-MIP has channels `0..3`, the masked channel becomes channel `4`). Use that
-index together with any other channel in `cellpose_channels` below. A
-`<mask_output>_regionprops.csv` file with the measurements of every kept
-object is written next to the masked OME-Zarr.
+### Measurement columns
+
+| CSV column | Purpose |
+| --- | --- |
+| `features_resolution_level` | Pyramid level to measure at, for both the MIP and the Otsu labels (they share the same pyramid). Defaults to `otsu_resolution_level`. |
+| `features_channels` | MIP channel indices to measure, separated by `;`, `,` or whitespace. Defaults to every channel. |
+| `features_extra_properties` | Extra `skimage.measure.regionprops` properties to add to the base structural set, separated by `;`, `,` or whitespace. |
+| `features_extra_intensity_properties` | Extra `regionprops` properties that require an intensity image, measured once per channel in `features_channels`. |
+
+Every measured column is suffixed per channel as `<property>_ch<index>` (or
+`<property>_ch<index>_<channel name>` when available), e.g.
+`mean_intensity_ch1_DAPI`; structural properties are unsuffixed. See
+[feature_extraction](../feature_extraction/README.md#measurement-columns) for
+the full property reference.
+
+### Filter columns
+
+| CSV column | Purpose |
+| --- | --- |
+| `filter_min_area` | Minimum object area, in pixels, to keep. Blank means no lower bound. |
+| `filter_max_area` | Maximum object area, in pixels, to keep. Blank means no upper bound. |
+| `filter_properties` | Extra `property:min:max` bounds on any column of the measurements CSV, separated by `;`. Either bound may be left empty, e.g. `solidity:0.8:;mean_intensity_ch1:100:`. Unknown property names raise a clear error listing what was measured. |
+
+Kept objects are relabeled to a contiguous `1..N` id space; the filtered CSV
+keeps the new id as `label` and the pre-filter id as `original_label`.
+
+### Clean-channel column
+
+| CSV column | Purpose |
+| --- | --- |
+| `clean_channel` | MIP channel index to zero outside the filtered objects. Defaults to `otsu_channel`. |
+
+The clean channel is appended after every original MIP channel (e.g. if the
+MIP has channels `0..3`, the clean channel becomes channel `4`). Use that
+index together with any other channel in `cellpose_channels` below.
 
 ### Cellpose columns
 
@@ -56,12 +91,10 @@ object is written next to the masked OME-Zarr.
 | --- | --- |
 | `cellpose_diameter` | Expected object diameter in pixels (integer). |
 | `cellpose_niter` | Number of Cellpose iterations (integer). |
-| `cellpose_channels` | Channels used for segmentation, e.g. `4;1` to combine the masked channel (index `4`) with channel `1`. |
+| `cellpose_channels` | Channels used for segmentation, e.g. `4;1` to combine the clean channel (index `4`) with channel `1`. |
 | `cellpose_halo` | Segmentation-context halo in pixels. Defaults to `20`. |
+| `resolution_level` | Pyramid level used for segmentation. Defaults to `--resolution_level` (0). Independent of `otsu_resolution_level`/`features_resolution_level` — the clean-channel OME-Zarr keeps the MIP's full pyramid, so any level can be chosen here. |
 | `do_3D` | Any non-empty value enables 3D segmentation; leave blank to disable. |
-
-Cellpose always segments resolution level `0` of the masked OME-Zarr, since
-that OME-Zarr only has a single resolution level (it is not re-pyramided).
 
 ### Conversion columns (`pymif 2zarr`)
 
@@ -75,9 +108,9 @@ be CSV-quoted.
 ### Example
 
 ```csv
-dataset_id,input,microscope,output,chunk_size,zarr_format,mask_channel,mask_min_area,mask_max_area,mask_intensity_channels,mask_filters,cellpose_diameter,cellpose_channels
-sample_01,/g/mif-hd/shared/data/sample_01.ome.tiff,opera,sample_01.ome.zarr,1 1 1 512 512,2,0,50,5000,2,form_factor:0.5:;mean_intensity_ch2:150:,30,4;1
-sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,sample_02.ome.zarr,,2,0,50,,,,,25,4
+dataset_id,input,microscope,output,chunk_size,zarr_format,otsu_channel,filter_min_area,filter_max_area,filter_properties,cellpose_diameter,cellpose_channels
+sample_01,/g/mif-hd/shared/data/sample_01.ome.tiff,opera,sample_01.ome.zarr,1 1 1 512 512,2,0,50,5000,form_factor:0.5:,30,4;1
+sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,sample_02.ome.zarr,,2,0,50,,,25,4
 ```
 
 ## Parameters
@@ -85,8 +118,8 @@ sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,sample_02.ome.zarr,,2,0
 | Parameter | Default | Purpose |
 | --- | --- | --- |
 | `--input_csv` | – (required) | Input CSV. |
-| `--default_outdir` | `results` | Base directory for `output`/`mip_output`/`mask_output`/`labels_output` when a row leaves them blank. |
-| `--resolution_level` | `0` | Pyramid level when a row has no `mask_resolution_level` (or `resolution_level`). |
+| `--default_outdir` | `results` | Base directory for every `*_output` column when a row leaves it blank. |
+| `--resolution_level` | `0` | Pyramid level when a row has no `otsu_resolution_level` (or `resolution_level`). |
 | `--cellpose_model_path` | none | Custom pretrained Cellpose model. Defaults to Cellpose-SAM. |
 
 ## Running the workflow
