@@ -22,26 +22,24 @@ export NF_PATH="/home/$USER/projects/mif-resources/workflows/complete_conv_tiled
 export LIB_PATH="/home/$USER/projects/mif-resources/lib" # <--- MODIFY
 export WDIR="/PATH/TO/WORK/DIRECTORY" # <---------------- MODIFY TO YOUR DESIRED WORK LOCATION
 export CSV_PATH="/PATH/TO/batch.csv" # <----------------- MODIFY
-export OUTDIR="/scratch/$USER/complete_conv_tiled_cellpose/results" # <--- MODIFY
-export MDL="/g/mif-hd/shared/cellpose_models/cpsam"
+export MDL="/g/mif-hd/shared/cellpose_models/cpsam" # <--- MODIFY IF USING A DIFFERENT MODEL
 
 # Optional pipeline-wide parameters. Uncomment the ones you want to override.
-#   --resolution_level     pyramid level for tiling/segmentation when a CSV row has none (default: 0)
-#   --label_offset_step    label-ID offset step between tiles (default: 100000)
-#   --multicut_beta        LABEL_SOLVER edge-cut trade-off (default: 0.5)
-#   --cellpose_model_path  custom pretrained Cellpose model (default: built-in Cellpose-SAM)
+#   --outdir              default location for the converted zarr/mask (default: results)
+#   --resolution_level    pyramid level for tiling/segmentation when a CSV row has none (default: 0)
+#   --label_offset_step   label-ID offset step between tiles (default: 100000)
+#   --multicut_beta       LABEL_SOLVER edge-cut trade-off (default: 0.5)
 EXTRA_ARGS=(
+    # --outdir "/scratch/$USER/complete_conv_tiled_cellpose/results"
     # --resolution_level 0
     # --label_offset_step 100000
     # --multicut_beta 0.5
-    # --cellpose_model_path "/PATH/TO/custom_model" # <----------- MODIFY
 )
 
 nextflow run "$NF_PATH" \
     -lib "$LIB_PATH" \
     -work-dir "$WDIR" \
     --input_csv "$CSV_PATH" \
-    --outdir "$OUTDIR" \
     --cellpose_model_path "$MDL" \
     "${EXTRA_ARGS[@]}" \
     -resume

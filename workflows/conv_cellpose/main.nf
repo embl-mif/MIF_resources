@@ -7,10 +7,11 @@ include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam
 
 
 workflow {
+
     def repoRootDir = workflow.projectDir.getParent().getParent()
 
-    def zarr_dir = "${file(params.outdir)}/zarr"
-    def default_labels_dir = "${file(params.outdir)}/labels"
+    def default_zarr_dir = "${file(params.default_outdir)}/zarr"
+    def default_labels_dir = "${file(params.default_outdir)}/labels"
 
     ch_cellpose_model = Channel.value(
         params.cellpose_model_path
@@ -53,14 +54,24 @@ workflow {
                 ? do_3D_text.equalsIgnoreCase('true')
                 : false
 
-            def resolved_zarr_output =
-                "${zarr_dir}/${file(row.output).name}"
+            def requested_zarr_output = Utils.normalizeOptionalText(row.output)
+            if (requested_zarr_output && !file(requested_zarr_output).isAbsolute()) {
+                error(
+                    "zarr_output must be an absolute path (dataset_id=${dataset_id}): " +
+                    "got '${requested_zarr_output}'. Leave the column blank to use the " +
+                    "default location under default_outdir instead."
+                )
+            }
+            def resolved_zarr_output = requested_zarr_output
+                ?: "${default_zarr_dir}/${dataset_id}.ome.zarr"
+
+
             def requested_labels_output = Utils.normalizeOptionalText(row.labels_output)
             if (requested_labels_output && !file(requested_labels_output).isAbsolute()) {
                 error(
                     "labels_output must be an absolute path (dataset_id=${dataset_id}): " +
                     "got '${requested_labels_output}'. Leave the column blank to use the " +
-                    "default location under outdir instead."
+                    "default location under default_outdir instead."
                 )
             }
             def resolved_labels_output = requested_labels_output
@@ -69,6 +80,7 @@ workflow {
             def meta = row + [
                 id                    : dataset_id,
                 zarr_output_name      : resolved_zarr_output,
+                labels_output_name    : resolved_labels_output,
                 resolution_level      : resolution_level
                     ? resolution_level as int
                     : (params.resolution_level != null ? params.resolution_level as int : null),
