@@ -4,7 +4,7 @@ nextflow.enable.dsl = 2
 
 include { PYMIF_CONVERSION              } from '../../modules/local/pymif_conversion/main'
 include { PYMIF_MIP_ZARR                } from '../../modules/local/pymif_mip_zarr/main'
-include { PYMIF_LABEL_MASK_ZARR         } from '../../modules/local/pymif_label_mask_zarr/main'
+include { PYMIF_FILTER_LABELS           } from '../../modules/local/pymif_filter_labels/main'
 include { CELLPOSE_SAM_ZARR_MIF         } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
 workflow {
@@ -148,11 +148,11 @@ workflow {
      * Expected output:
      * tuple(meta, masked_zarr)
      */
-    PYMIF_LABEL_MASK_ZARR(PYMIF_MIP_ZARR.out.zarr)
+    PYMIF_FILTER_LABELS(PYMIF_MIP_ZARR.out.zarr)
 
-    ch_cellpose_inputs = PYMIF_LABEL_MASK_ZARR.out.zarr
+    ch_cellpose_inputs = PYMIF_FILTER_LABELS.out.zarr
         .map { meta, zarr_path ->
-            // PYMIF_LABEL_MASK_ZARR always writes a single-resolution OME-Zarr,
+            // PYMIF_FILTER_LABELS always writes a single-resolution OME-Zarr,
             // regardless of which mask_resolution_level/resolution_level the
             // CSV row requested upstream, so Cellpose must read level 0 of it.
             def cellpose_meta = meta + [resolution_level: 0]
