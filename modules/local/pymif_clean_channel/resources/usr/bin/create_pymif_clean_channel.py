@@ -42,6 +42,34 @@ def extract_frame(level_data, indices: dict[int, int | None]) -> np.ndarray:
     return np.asarray(level_data[tuple(indexer)])
 
 
+def match_shape(array: np.ndarray, target_shape: tuple[int, ...]) -> np.ndarray:
+    """Crop/zero-pad `array` at the high end of each axis to `target_shape`.
+
+    Independently-built multiscale pyramids (e.g. PyMIF's own converter vs.
+    ngff-zarr's to_multiscales, used by Cellpose) can round a coarse level's
+    dimensions a pixel or two differently even from the same base image.
+    Mirrors _match_mask_shape in cellpose_sam_zarr.py.
+    """
+    if array.shape == target_shape:
+        return array
+    if array.ndim != len(target_shape):
+        raise ValueError(f"Rank mismatch: array shape {array.shape} vs target {target_shape}")
+
+    adjusted = array
+    for axis, target in enumerate(target_shape):
+        current = adjusted.shape[axis]
+        if current > target:
+            slicer = [slice(None)] * adjusted.ndim
+            slicer[axis] = slice(0, target)
+            adjusted = adjusted[tuple(slicer)]
+        elif current < target:
+            pad_width = [(0, 0)] * adjusted.ndim
+            pad_width[axis] = (0, target - current)
+            adjusted = np.pad(adjusted, pad_width=pad_width, mode="constant", constant_values=0)
+
+    return adjusted
+
+
 def mask_level(
     intensity_level,
     label_level,
@@ -75,12 +103,12 @@ def mask_level(
         )
 
         if channel_image.shape != label_frame.shape:
-            raise ValueError(
-                f"Intensity channel image shape {channel_image.shape} does not "
-                f"match label image shape {label_frame.shape}. --intensity and "
-                "--labels must share the same multiscale pyramid (same shape "
-                "at every level)."
+            print(
+                f"Adjusting label frame shape from {label_frame.shape} to "
+                f"{channel_image.shape} (pyramid rounding mismatch between "
+                "--intensity and --labels)"
             )
+            label_frame = match_shape(label_frame, channel_image.shape)
 
         masked = np.where(label_frame != 0, channel_image, 0).astype(channel_image.dtype)
 

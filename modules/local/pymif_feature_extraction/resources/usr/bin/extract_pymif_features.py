@@ -148,6 +148,34 @@ def extract_frame(level_data, indices: dict[int, int | None]) -> np.ndarray:
     return np.asarray(level_data[tuple(indexer)])
 
 
+def match_shape(array: np.ndarray, target_shape: tuple[int, ...]) -> np.ndarray:
+    """Crop/zero-pad `array` at the high end of each axis to `target_shape`.
+
+    Independently-built multiscale pyramids (e.g. PyMIF's own converter vs.
+    ngff-zarr's to_multiscales, used by Cellpose) can round a coarse level's
+    dimensions a pixel or two differently even from the same base image.
+    Mirrors _match_mask_shape in cellpose_sam_zarr.py.
+    """
+    if array.shape == target_shape:
+        return array
+    if array.ndim != len(target_shape):
+        raise ValueError(f"Rank mismatch: array shape {array.shape} vs target {target_shape}")
+
+    adjusted = array
+    for axis, target in enumerate(target_shape):
+        current = adjusted.shape[axis]
+        if current > target:
+            slicer = [slice(None)] * adjusted.ndim
+            slicer[axis] = slice(0, target)
+            adjusted = adjusted[tuple(slicer)]
+        elif current < target:
+            pad_width = [(0, 0)] * adjusted.ndim
+            pad_width[axis] = (0, target - current)
+            adjusted = np.pad(adjusted, pad_width=pad_width, mode="constant", constant_values=0)
+
+    return adjusted
+
+
 def main():
     args = parse_args()
 
@@ -218,14 +246,13 @@ def main():
             {c_index: channel_indices[0], **({t_index_int: t} if t_index_int is not None else {})},
         )
         if label_image.shape != first_channel_image.shape:
-            raise ValueError(
-                f"Label image shape {label_image.shape} does not match intensity "
-                f"channel image shape {first_channel_image.shape} at "
-                f"intensity-resolution-level={args.intensity_resolution_level}, "
-                f"labels-resolution-level={args.labels_resolution_level}. Pick "
-                "resolution levels whose spatial (and, if present, time) extent "
-                "match."
+            print(
+                f"Adjusting label image shape from {label_image.shape} to "
+                f"{first_channel_image.shape} (pyramid rounding mismatch between "
+                f"--intensity-resolution-level={args.intensity_resolution_level} and "
+                f"--labels-resolution-level={args.labels_resolution_level})"
             )
+            label_image = match_shape(label_image, first_channel_image.shape)
 
         df = measure_structural_regions(label_image, extra_properties)
 
