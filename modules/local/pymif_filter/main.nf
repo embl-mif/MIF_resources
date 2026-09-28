@@ -7,7 +7,7 @@ process PYMIF_FILTER {
     tuple val(meta), path(labels_zarr), path(csv_file)
 
     output:
-    tuple val(meta), val("${task.workDir.resolve(output_labels.toString())}"), val("${task.workDir.resolve(output_csv.toString())}"), emit: zarr_csv
+    tuple val(meta), val(output_labels_path), val(output_csv_path), emit: zarr_csv
     path staged_output_labels, optional: true, emit: output_zarr // to track tiles that are completed and skip them
     path staged_output_csv, optional: true, emit: output_csv // to track tiles that are completed and skip them
     path "versions.yml"                       , emit: versions
@@ -17,6 +17,10 @@ process PYMIF_FILTER {
     staged_output_labels = new File(output_labels.toString()).isAbsolute() ? null : output_labels
     output_csv = meta.filter_csv_output_name ?: "${meta.id}_filtered_labels.csv"
     staged_output_csv = new File(output_csv.toString()).isAbsolute() ? null : output_csv
+    // Resolved here, not in the output block: on -resume the cached context's `task`
+    // has no workDir, so `task.workDir` in an output declaration is null.
+    output_labels_path = task.workDir.resolve(output_labels.toString()).toString()
+    output_csv_path = task.workDir.resolve(output_csv.toString()).toString()
 
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"

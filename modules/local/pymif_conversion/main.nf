@@ -7,7 +7,7 @@ process PYMIF_CONVERSION {
     tuple val(meta), path(input_dataset)
 
     output:
-    tuple val(meta),  val("${task.workDir.resolve(output_zarr.toString())}")   , emit: zarr
+    tuple val(meta),  val(output_zarr_path)   , emit: zarr
     path staged_output_zarr, optional: true, emit: output_dir // to track tiles that are completed and skip them
     path "versions.yml"                  , emit: versions
 
@@ -17,6 +17,9 @@ process PYMIF_CONVERSION {
     script:
     output_zarr = meta.zarr_output_name ?: "${meta.id}.ome.zarr"
     staged_output_zarr = new File(output_zarr.toString()).isAbsolute() ? null : output_zarr
+    // Resolved here, not in the output block: on -resume the cached context's `task`
+    // has no workDir, so `task.workDir` in an output declaration is null.
+    output_zarr_path = task.workDir.resolve(output_zarr.toString()).toString()
 
 	def args = task.ext.args ?: ''
 
@@ -120,7 +123,8 @@ process PYMIF_CONVERSION {
     """
 
     stub:
-    output_zarr = meta.zarr_output_name    
+    output_zarr = meta.zarr_output_name
+    output_zarr_path = task.workDir.resolve(output_zarr.toString()).toString()
     """
     mkdir -p "${output_zarr}"
     cat <<-END_VERSIONS > versions.yml

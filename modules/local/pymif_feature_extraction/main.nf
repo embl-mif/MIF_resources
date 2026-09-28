@@ -7,13 +7,16 @@ process PYMIF_FEATURE_EXTRACTION {
     tuple val(meta), path(intensity_zarr), path(labels_zarr)
 
     output:
-    tuple val(meta), val("${task.workDir.resolve(output_csv.toString())}"), emit: csv
+    tuple val(meta), val(output_csv_path), emit: csv
     path staged_output_csv, optional: true, emit: output_file // to track tiles that are completed and skip them
     path "versions.yml"                    , emit: versions
 
     script:
     output_csv = meta.features_output_name ?: "${meta.id}_features.csv"
     staged_output_csv = new File(output_csv.toString()).isAbsolute() ? null : output_csv
+    // Resolved here, not in the output block: on -resume the cached context's `task`
+    // has no workDir, so `task.workDir` in an output declaration is null.
+    output_csv_path = task.workDir.resolve(output_csv.toString()).toString()
 
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"

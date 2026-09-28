@@ -7,13 +7,16 @@ process PYMIF_OTSU_LABEL {
     tuple val(meta), path(input_zarr)
 
     output:
-    tuple val(meta), val("${task.workDir.resolve(output_labels.toString())}"), emit: zarr
+    tuple val(meta), val(output_labels_path), emit: zarr
     path staged_output_labels, optional: true, emit: output_zarr // to track tiles that are completed and skip them
     path "versions.yml"                       , emit: versions
 
     script:
     output_labels = meta.otsu_output_name ?: "${meta.id}_otsu_labels.ome.zarr"
     staged_output_labels = new File(output_labels.toString()).isAbsolute() ? null : output_labels
+    // Resolved here, not in the output block: on -resume the cached context's `task`
+    // has no workDir, so `task.workDir` in an output declaration is null.
+    output_labels_path = task.workDir.resolve(output_labels.toString()).toString()
 
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
