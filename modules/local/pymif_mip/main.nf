@@ -12,29 +12,33 @@ process PYMIF_MIP {
     path "versions.yml"                       , emit: versions
 
     script:
-	output_mip = meta.mip_output_name ?: "${meta.id}_mip.ome.zarr"
+    output_mip = meta.mip_output_name ?: "${meta.id}_mip.ome.zarr"
     staged_output_mip = new File(output_mip.toString()).isAbsolute() ? null : output_mip
-	def shellQuote = { value ->
+
+    def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
     }
 
-	"""
+    // Keep this script indented with spaces only: Nextflow dedents it, and stray tabs
+    // leave the END_VERSIONS heredoc terminator indented, so bash never closes it (and
+    // swallows the env-output capture code Nextflow appends after the script).
+    """
     export OUT_MIP_PATH=${Utils.shellOutputPath(output_mip)}
 
     if [ -d ${shellQuote(output_mip)} ] && [ -e ${shellQuote(output_mip)}/zarr.json -o -e ${shellQuote(output_mip)}/.zgroup ]; then
-         echo "Output already exists, skipping mip: ${output_mip}"
+        echo "Output already exists, skipping mip: ${output_mip}"
     else
         mkdir -p \$(dirname ${shellQuote(output_mip)})
-        
-		create_pymif_mip.py \
-			--input "${input_zarr}" \
-			--output "${output_mip}"
+
+        create_pymif_mip.py \
+            --input "${input_zarr}" \
+            --output "${output_mip}"
     fi
- 
- 	if [ ! -e ${shellQuote(output_mip)}/zarr.json ] && [ ! -e ${shellQuote(output_mip)}/.zgroup ]; then
-         echo "ERROR: expected zarr store not found: ${output_mip}" >&2
-         exit 1
-    fi  
+
+    if [ ! -e ${shellQuote(output_mip)}/zarr.json ] && [ ! -e ${shellQuote(output_mip)}/.zgroup ]; then
+        echo "ERROR: expected zarr store not found: ${output_mip}" >&2
+        exit 1
+    fi
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
