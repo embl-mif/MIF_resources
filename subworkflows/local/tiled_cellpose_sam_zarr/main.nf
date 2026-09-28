@@ -126,7 +126,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
     ch_image_tiles_checked = ch_image_tiles.map { meta, image, localImage, imageUri ->
         def expectedPath = file("/scratch/${System.getenv('USER')}/cellpose_tiles_published/${meta.source_dataset_id}/${meta.labels_output_name}")
         def markerFiles = ['.zgroup', 'zarr.json'].collect { file("${expectedPath}/${it}") }
-        def isDone = expectedPath.exists() && markerFiles.any { it.exists() && it.length() > 0 }
+        def isDone = expectedPath.exists() && markerFiles.any { it.exists() && it.size() > 0 }
         tuple(meta, image, localImage, imageUri, expectedPath, isDone)
     }
 
