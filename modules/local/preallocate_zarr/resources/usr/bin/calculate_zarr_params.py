@@ -53,7 +53,7 @@ def format_as_flags(params: dict) -> str:
         flags.append(f"--{axis}-min {start}")
         flags.append(f"--{axis}-max {end}")
     flags.append(f"--chunks {','.join(str(params['chunks'][axis]) for axis in params['axis_order'])}")
-        return " ".join(flags)
+    return " ".join(flags)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
