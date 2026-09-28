@@ -34,29 +34,17 @@ workflow {
             def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
                 ?: "${input_dataset.simpleName}_${index + 1}"
 
-            def resolveOutput = { String columnName, String defaultPath ->
-                def requested = Utils.normalizeOptionalText(row[columnName])
-                if (requested && !file(requested).isAbsolute()) {
-                    error(
-                        "${columnName} must be an absolute path (dataset_id=${dataset_id}): " +
-                        "got '${requested}'. Leave the column blank to write to the task " +
-                        "work directory under the default file name instead."
-                    )
-                }
-                requested ?: defaultPath
-            }
-
-            def resolved_zarr_output = resolveOutput('output', "${dataset_id}.ome.zarr")
-            def resolved_mip_output = resolveOutput('mip_output', "${dataset_id}_mip.ome.zarr")
-            def resolved_seed_output = resolveOutput('seed_output', "${dataset_id}_seed_labels.ome.zarr")
-            def resolved_features_output = resolveOutput('features_output', "${dataset_id}_features.csv")
-            def resolved_filter_output = resolveOutput('filter_output', "${dataset_id}_filtered_labels.ome.zarr")
-            def resolved_filter_csv_output = resolveOutput('filter_csv_output', "${dataset_id}_filtered_labels.csv")
-            def resolved_clean_output = resolveOutput('clean_output', "${dataset_id}_clean.ome.zarr")
-            def resolved_labels_output = resolveOutput('labels_output', "${dataset_id}_labels.ome.zarr")
-            def resolved_endomorph_regions_output = resolveOutput('endomorph_regions_output', "${dataset_id}_endomorph_regions.ome.zarr")
-            def resolved_endomorph_cells_output = resolveOutput('endomorph_cells_output', "${dataset_id}_endomorph_cells.csv")
-            def resolved_endomorph_summary_output = resolveOutput('endomorph_summary_output', "${dataset_id}_endomorph_summary.csv")
+            def resolved_zarr_output = Utils.resolveOutput(row, 'output', "${dataset_id}.ome.zarr", dataset_id)
+            def resolved_mip_output = Utils.resolveOutput(row, 'mip_output', "${dataset_id}_mip.ome.zarr", dataset_id)
+            def resolved_seed_output = Utils.resolveOutput(row, 'seed_output', "${dataset_id}_seed_labels.ome.zarr", dataset_id)
+            def resolved_features_output = Utils.resolveOutput(row, 'features_output', "${dataset_id}_features.csv", dataset_id)
+            def resolved_filter_output = Utils.resolveOutput(row, 'filter_output', "${dataset_id}_filtered_labels.ome.zarr", dataset_id)
+            def resolved_filter_csv_output = Utils.resolveOutput(row, 'filter_csv_output', "${dataset_id}_filtered_labels.csv", dataset_id)
+            def resolved_clean_output = Utils.resolveOutput(row, 'clean_output', "${dataset_id}_clean.ome.zarr", dataset_id)
+            def resolved_labels_output = Utils.resolveOutput(row, 'labels_output', "${dataset_id}_labels.ome.zarr", dataset_id)
+            def resolved_endomorph_regions_output = Utils.resolveOutput(row, 'endomorph_regions_output', "${dataset_id}_endomorph_regions.ome.zarr", dataset_id)
+            def resolved_endomorph_cells_output = Utils.resolveOutput(row, 'endomorph_cells_output', "${dataset_id}_endomorph_cells.csv", dataset_id)
+            def resolved_endomorph_summary_output = Utils.resolveOutput(row, 'endomorph_summary_output', "${dataset_id}_endomorph_summary.csv", dataset_id)
 
             // Required: which MIP channel(s) the seed Cellpose call segments
             // on, in place of the Otsu-threshold channel used by

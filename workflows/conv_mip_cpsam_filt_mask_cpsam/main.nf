@@ -40,26 +40,14 @@ workflow {
             def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
                 ?: "${input_dataset.simpleName}_${index + 1}"
 
-            def resolveOutput = { String columnName, String defaultPath ->
-                def requested = Utils.normalizeOptionalText(row[columnName])
-                if (requested && !file(requested).isAbsolute()) {
-                    error(
-                        "${columnName} must be an absolute path (dataset_id=${dataset_id}): " +
-                        "got '${requested}'. Leave the column blank to use the default " +
-                        "location under default_outdir instead."
-                    )
-                }
-                requested ?: defaultPath
-            }
-
-            def resolved_zarr_output = resolveOutput('output', "${default_zarr_dir}/${dataset_id}.ome.zarr")
-            def resolved_mip_output = resolveOutput('mip_output', "${default_mip_dir}/${dataset_id}_mip.ome.zarr")
-            def resolved_seed_output = resolveOutput('seed_output', "${default_seed_dir}/${dataset_id}_seed_labels.ome.zarr")
-            def resolved_features_output = resolveOutput('features_output', "${default_features_dir}/${dataset_id}_features.csv")
-            def resolved_filter_output = resolveOutput('filter_output', "${default_filtered_dir}/${dataset_id}_filtered_labels.ome.zarr")
-            def resolved_filter_csv_output = resolveOutput('filter_csv_output', "${default_filtered_dir}/${dataset_id}_filtered_labels.csv")
-            def resolved_clean_output = resolveOutput('clean_output', "${default_clean_dir}/${dataset_id}_clean.ome.zarr")
-            def resolved_labels_output = resolveOutput('labels_output', "${default_labels_dir}/${dataset_id}_labels.ome.zarr")
+            def resolved_zarr_output = Utils.resolveOutput(row, 'output', "${default_zarr_dir}/${dataset_id}.ome.zarr", dataset_id)
+            def resolved_mip_output = Utils.resolveOutput(row, 'mip_output', "${default_mip_dir}/${dataset_id}_mip.ome.zarr", dataset_id)
+            def resolved_seed_output = Utils.resolveOutput(row, 'seed_output', "${default_seed_dir}/${dataset_id}_seed_labels.ome.zarr", dataset_id)
+            def resolved_features_output = Utils.resolveOutput(row, 'features_output', "${default_features_dir}/${dataset_id}_features.csv", dataset_id)
+            def resolved_filter_output = Utils.resolveOutput(row, 'filter_output', "${default_filtered_dir}/${dataset_id}_filtered_labels.ome.zarr", dataset_id)
+            def resolved_filter_csv_output = Utils.resolveOutput(row, 'filter_csv_output', "${default_filtered_dir}/${dataset_id}_filtered_labels.csv", dataset_id)
+            def resolved_clean_output = Utils.resolveOutput(row, 'clean_output', "${default_clean_dir}/${dataset_id}_clean.ome.zarr", dataset_id)
+            def resolved_labels_output = Utils.resolveOutput(row, 'labels_output', "${default_labels_dir}/${dataset_id}_labels.ome.zarr", dataset_id)
 
             // Required: which MIP channel(s) the seed Cellpose call segments
             // on, in place of the Otsu-threshold channel used by

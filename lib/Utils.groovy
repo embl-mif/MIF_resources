@@ -231,6 +231,23 @@ class Utils {
         return text
     }
 
+    /**
+     * Resolves an output location from a samplesheet row: the value of `columnName`
+     * when it is an absolute path, `defaultPath` when the cell is blank. A relative
+     * path is rejected, because it would silently land in the task work directory.
+     */
+    static String resolveOutput(def row, String columnName, String defaultPath, String datasetId) {
+        def requested = normalizeOptionalText(row[columnName])
+        if (requested && !new File(requested).isAbsolute()) {
+            throw new IllegalArgumentException(
+                "${columnName} must be an absolute path (dataset_id=${datasetId}): " +
+                "got '${requested}'. Leave the column blank to use the default location " +
+                "instead (${defaultPath})."
+            )
+        }
+        return requested ?: defaultPath
+    }
+
     static String resolvePath(String uri, String samplesheetPath) {
         
         if (uri == null) {

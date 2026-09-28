@@ -23,16 +23,7 @@ workflow {
             def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
                 ?: "${intensity_zarr.simpleName}_${index + 1}"
 
-            def requested_features_output = Utils.normalizeOptionalText(row.features_output)
-            if (requested_features_output && !file(requested_features_output).isAbsolute()) {
-                error(
-                    "features_output must be an absolute path (dataset_id=${dataset_id}): " +
-                    "got '${requested_features_output}'. Leave the column blank to use the " +
-                    "default location under default_outdir instead."
-                )
-            }
-            def resolved_features_output = requested_features_output
-                ?: "${default_features_dir}/${dataset_id}_features.csv"
+            def resolved_features_output = Utils.resolveOutput(row, 'features_output', "${default_features_dir}/${dataset_id}_features.csv", dataset_id)
 
             def intensity_resolution_level = Utils.normalizeOptionalText(row.intensity_resolution_level)
             def labels_resolution_level = Utils.normalizeOptionalText(row.labels_resolution_level)
