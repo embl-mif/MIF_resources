@@ -7,13 +7,14 @@ process PYMIF_FEATURE_EXTRACTION {
     tuple val(meta), path(intensity_zarr), path(labels_zarr)
 
     output:
-    tuple val(meta), env(OUT_CSV_PATH), emit: csv
-    path staged_output_csv, optional: true, emit: output_file // to track tiles that are completed and skip them
-    path "versions.yml"                    , emit: versions
+    tuple val(meta), path(output_csv_link), emit: csv
+    path "versions.yml"                   , emit: versions
 
     script:
     output_csv = meta.features_output_name ?: "${meta.id}_features.csv"
-    staged_output_csv = new File(output_csv.toString()).isAbsolute() ? null : output_csv
+    // A `path` output must live in the work dir: an absolute output is exposed there as a
+    // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
+    output_csv_link = new File(output_csv.toString()).name
 
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
@@ -26,8 +27,6 @@ process PYMIF_FEATURE_EXTRACTION {
     def extraIntensityPropertiesArg = meta.features_extra_intensity_properties ? "--extra-intensity-properties ${shellQuote(meta.features_extra_intensity_properties)}" : ""
 
     """
-    export OUT_CSV_PATH=${Utils.shellOutputPath(output_csv)}
-
     if [ -e ${shellQuote(output_csv)} ]; then
         echo "Output already exists, skipping feature extraction: ${output_csv}"
     else
@@ -49,6 +48,8 @@ process PYMIF_FEATURE_EXTRACTION {
         echo "ERROR: expected features CSV not found: ${output_csv}" >&2
         exit 1
     fi
+
+    ${Utils.shellLinkOutput(output_csv)}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

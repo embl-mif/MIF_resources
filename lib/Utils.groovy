@@ -202,16 +202,19 @@ class Utils {
     }
 
     /**
-     * Shell expression for the absolute location of a process output: an absolute
-     * path is kept as-is, a relative one is anchored at the task work directory
-     * ($PWD). Modules export it and declare it as an `env` output, which Nextflow
-     * stores in .command.env, so it is also restored on -resume. (`task.workDir`
-     * cannot be used in the output block: it is null when a cached task is resumed.)
+     * Shell command that exposes an absolute process output in the task work directory,
+     * as a symlink named after the file. Modules declare that name as their `path`
+     * output: Nextflow only accepts `path` outputs inside the work directory, and the
+     * link lets it track an output written elsewhere and re-check on -resume that it
+     * still exists. Empty for a relative output, which already lives in the work dir.
      */
-    static String shellOutputPath(def path) {
+    static String shellLinkOutput(def path) {
         def text = path.toString()
-        def quoted = "'" + text.replace("'", "'\"'\"'") + "'"
-        return text.startsWith('/') ? quoted : "\"\$PWD\"/" + quoted
+        if (!new File(text).isAbsolute()) {
+            return ''
+        }
+        def quote = { String s -> "'" + s.replace("'", "'\"'\"'") + "'" }
+        return "ln -sfn ${quote(text)} ${quote(new File(text).name)}"
     }
 
     static String optionalCliArg(String flag, def value) {

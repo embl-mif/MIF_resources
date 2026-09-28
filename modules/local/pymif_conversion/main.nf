@@ -7,16 +7,17 @@ process PYMIF_CONVERSION {
     tuple val(meta), path(input_dataset)
 
     output:
-    tuple val(meta),  env(OUT_ZARR_PATH)   , emit: zarr
-    path staged_output_zarr, optional: true, emit: output_dir // to track tiles that are completed and skip them
-    path "versions.yml"                  , emit: versions
+    tuple val(meta), path(output_zarr_link), emit: zarr
+    path "versions.yml"                    , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
     output_zarr = meta.zarr_output_name ?: "${meta.id}.ome.zarr"
-    staged_output_zarr = new File(output_zarr.toString()).isAbsolute() ? null : output_zarr
+    // A `path` output must live in the work dir: an absolute output is exposed there as a
+    // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
+    output_zarr_link = new File(output_zarr.toString()).name
 
 	def args = task.ext.args ?: ''
 
@@ -101,8 +102,6 @@ process PYMIF_CONVERSION {
     def command = commandParts.join(' ')
 
     """
-    export OUT_ZARR_PATH=${Utils.shellOutputPath(output_zarr)}
-
     if [ -d ${shellQuote(output_zarr)} ] && [ -e ${shellQuote(output_zarr)}/zarr.json -o -e ${shellQuote(output_zarr)}/.zgroup ]; then
         echo "Output already exists, skipping conversion: ${output_zarr}"
     else
@@ -115,6 +114,8 @@ process PYMIF_CONVERSION {
         exit 1
     fi
 
+    ${Utils.shellLinkOutput(output_zarr)}
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         pymif: \$(python -c 'import pymif; print(pymif.__version__)' 2>/dev/null || echo "unknown")
@@ -123,10 +124,10 @@ process PYMIF_CONVERSION {
 
     stub:
     output_zarr = meta.zarr_output_name
-    staged_output_zarr = new File(output_zarr.toString()).isAbsolute() ? null : output_zarr
+    output_zarr_link = new File(output_zarr.toString()).name
     """
-    export OUT_ZARR_PATH=${Utils.shellOutputPath(output_zarr)}
     mkdir -p "${output_zarr}"
+    ${Utils.shellLinkOutput(output_zarr)}
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         pymif: "stub"

@@ -7,13 +7,14 @@ process PYMIF_OTSU_LABEL {
     tuple val(meta), path(input_zarr)
 
     output:
-    tuple val(meta), env(OUT_LABELS_PATH), emit: zarr
-    path staged_output_labels, optional: true, emit: output_zarr // to track tiles that are completed and skip them
-    path "versions.yml"                       , emit: versions
+    tuple val(meta), path(output_labels_link), emit: zarr
+    path "versions.yml"                      , emit: versions
 
     script:
     output_labels = meta.otsu_output_name ?: "${meta.id}_otsu_labels.ome.zarr"
-    staged_output_labels = new File(output_labels.toString()).isAbsolute() ? null : output_labels
+    // A `path` output must live in the work dir: an absolute output is exposed there as a
+    // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
+    output_labels_link = new File(output_labels.toString()).name
 
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
@@ -23,8 +24,6 @@ process PYMIF_OTSU_LABEL {
     def otsuMultiplierArg = meta.otsu_multiplier != null ? "--otsu-multiplier ${meta.otsu_multiplier}" : ""
 
     """
-    export OUT_LABELS_PATH=${Utils.shellOutputPath(output_labels)}
-
     if [ -d ${shellQuote(output_labels)} ] && [ -e ${shellQuote(output_labels)}/zarr.json -o -e ${shellQuote(output_labels)}/.zgroup ]; then
         echo "Output already exists, skipping Otsu label: ${output_labels}"
     else
@@ -42,6 +41,8 @@ process PYMIF_OTSU_LABEL {
         echo "ERROR: expected zarr store not found: ${output_labels}" >&2
         exit 1
     fi
+
+    ${Utils.shellLinkOutput(output_labels)}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

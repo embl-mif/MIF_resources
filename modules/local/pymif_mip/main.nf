@@ -7,24 +7,22 @@ process PYMIF_MIP {
     tuple val(meta), path(input_zarr)
 
     output:
-    tuple val(meta), env(OUT_MIP_PATH), emit: zarr
-    path staged_output_mip, optional: true, emit: output_dir // to track tiles that are completed and skip them
-    path "versions.yml"                       , emit: versions
+    tuple val(meta), path(output_mip_link), emit: zarr
+    path "versions.yml"                   , emit: versions
 
     script:
     output_mip = meta.mip_output_name ?: "${meta.id}_mip.ome.zarr"
-    staged_output_mip = new File(output_mip.toString()).isAbsolute() ? null : output_mip
+    // A `path` output must live in the work dir: an absolute output is exposed there as a
+    // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
+    output_mip_link = new File(output_mip.toString()).name
 
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
     }
 
     // Keep this script indented with spaces only: Nextflow dedents it, and stray tabs
-    // leave the END_VERSIONS heredoc terminator indented, so bash never closes it (and
-    // swallows the env-output capture code Nextflow appends after the script).
+    // leave the END_VERSIONS heredoc terminator indented, so bash never closes it.
     """
-    export OUT_MIP_PATH=${Utils.shellOutputPath(output_mip)}
-
     if [ -d ${shellQuote(output_mip)} ] && [ -e ${shellQuote(output_mip)}/zarr.json -o -e ${shellQuote(output_mip)}/.zgroup ]; then
         echo "Output already exists, skipping mip: ${output_mip}"
     else
@@ -39,6 +37,8 @@ process PYMIF_MIP {
         echo "ERROR: expected zarr store not found: ${output_mip}" >&2
         exit 1
     fi
+
+    ${Utils.shellLinkOutput(output_mip)}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

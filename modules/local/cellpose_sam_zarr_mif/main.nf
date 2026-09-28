@@ -61,8 +61,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     path(pretrained_cellpose_model)
 
     output:
-    tuple val(meta), env(OUT_ZARR_PATH), emit: labels
-    path staged_output_zarr, optional: true, emit: labels_dir // to track tiles that are completed and skip them
+    tuple val(meta), path(output_zarr_link), emit: labels
 
     script:
     def image = image_uri ?: local_image
@@ -76,10 +75,10 @@ process CELLPOSE_SAM_ZARR_MIF {
     def cellpose_model_arg = pretrained_cellpose_model.name != 'NO_MODEL_FILE' ? "-m ${pretrained_cellpose_model}" : ""
     // Use direct_output_path for untiled workflows
     output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
-    // Only ask Nextflow to stage/track this as a real output when it lives in the
-    // task work dir. When meta.labels_output_name is an absolute path (written
-    // directly to shared storage), leave this null so nothing is declared.
-    staged_output_zarr = new File(output_zarr.toString()).isAbsolute() ? null : output_zarr
+    // A `path` output must live in the work dir: an absolute output (written directly to
+    // shared storage) is exposed there as a symlink named after it (see
+    // Utils.shellLinkOutput), a relative one is the output itself.
+    output_zarr_link = new File(output_zarr.toString()).name
     def x_min_arg = Utils.optionalCliArg("--x-min", meta.x_min)
     def x_max_arg = Utils.optionalCliArg("--x-max", meta.x_max)
     def y_min_arg = Utils.optionalCliArg("--y-min", meta.y_min)
@@ -98,8 +97,6 @@ process CELLPOSE_SAM_ZARR_MIF {
     def args = task.ext.args ?: ''
 
     """
-    export OUT_ZARR_PATH=${Utils.shellOutputPath(output_zarr)}
-
     cellpose_sam_zarr.py \
         --input_zarr "${image}" \
         --output_zarr ${output_zarr} \
@@ -120,15 +117,17 @@ process CELLPOSE_SAM_ZARR_MIF {
         ${cellprob_threshold_arg} \
         ${do_3D_arg} \
         ${args}
+
+    ${Utils.shellLinkOutput(output_zarr)}
     """
 
     stub:
     output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
-    staged_output_zarr = new File(output_zarr.toString()).isAbsolute() ? null : output_zarr
+    output_zarr_link = new File(output_zarr.toString()).name
     """
-    export OUT_ZARR_PATH=${Utils.shellOutputPath(output_zarr)}
     mkdir -p ${output_zarr}
     touch ${output_zarr}/.zgroup
+    ${Utils.shellLinkOutput(output_zarr)}
     """
 
 }

@@ -7,16 +7,16 @@ process PYMIF_FILTER {
     tuple val(meta), path(labels_zarr), path(csv_file)
 
     output:
-    tuple val(meta), env(OUT_LABELS_PATH), env(OUT_CSV_PATH), emit: zarr_csv
-    path staged_output_labels, optional: true, emit: output_zarr // to track tiles that are completed and skip them
-    path staged_output_csv, optional: true, emit: output_csv // to track tiles that are completed and skip them
-    path "versions.yml"                       , emit: versions
+    tuple val(meta), path(output_labels_link), path(output_csv_link), emit: zarr_csv
+    path "versions.yml"                                             , emit: versions
 
     script:
     output_labels = meta.filter_output_name ?: "${meta.id}_filtered_labels.ome.zarr"
-    staged_output_labels = new File(output_labels.toString()).isAbsolute() ? null : output_labels
     output_csv = meta.filter_csv_output_name ?: "${meta.id}_filtered_labels.csv"
-    staged_output_csv = new File(output_csv.toString()).isAbsolute() ? null : output_csv
+    // A `path` output must live in the work dir: an absolute output is exposed there as a
+    // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
+    output_labels_link = new File(output_labels.toString()).name
+    output_csv_link = new File(output_csv.toString()).name
 
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
@@ -27,9 +27,6 @@ process PYMIF_FILTER {
     def filtersArg = meta.filter_properties ? "--filters ${shellQuote(meta.filter_properties)}" : ""
 
     """
-    export OUT_LABELS_PATH=${Utils.shellOutputPath(output_labels)}
-    export OUT_CSV_PATH=${Utils.shellOutputPath(output_csv)}
-
     if [ -d ${shellQuote(output_labels)} ] && [ -e ${shellQuote(output_labels)}/zarr.json -o -e ${shellQuote(output_labels)}/.zgroup ]; then
         echo "Output already exists, skipping label filtering: ${output_labels}"
     else
@@ -55,6 +52,9 @@ process PYMIF_FILTER {
         echo "ERROR: expected filtered measurements CSV not found: ${output_csv}" >&2
         exit 1
     fi
+
+    ${Utils.shellLinkOutput(output_labels)}
+    ${Utils.shellLinkOutput(output_csv)}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

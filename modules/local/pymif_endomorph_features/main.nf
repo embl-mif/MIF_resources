@@ -7,16 +7,16 @@ process PYMIF_ENDOMORPH_FEATURES {
     tuple val(meta), path(intensity_zarr), path(labels_zarr), path(regions_zarr)
 
     output:
-    tuple val(meta), env(OUT_CSV_PATH), env(OUT_SUMMARY_CSV_PATH), emit: csv
-    path staged_output_csv, optional: true, emit: output_csv // to track tiles that are completed and skip them
-    path staged_output_summary_csv, optional: true, emit: output_summary_csv // to track tiles that are completed and skip them
-    path "versions.yml"                       , emit: versions
+    tuple val(meta), path(output_csv_link), path(output_summary_csv_link), emit: csv
+    path "versions.yml"                                                  , emit: versions
 
     script:
     output_csv = meta.endomorph_cells_output_name ?: "${meta.id}_endomorph_cells.csv"
-    staged_output_csv = new File(output_csv.toString()).isAbsolute() ? null : output_csv
     output_summary_csv = meta.endomorph_summary_output_name ?: "${meta.id}_endomorph_summary.csv"
-    staged_output_summary_csv = new File(output_summary_csv.toString()).isAbsolute() ? null : output_summary_csv
+    // A `path` output must live in the work dir: an absolute output is exposed there as a
+    // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
+    output_csv_link = new File(output_csv.toString()).name
+    output_summary_csv_link = new File(output_summary_csv.toString()).name
 
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
@@ -36,9 +36,6 @@ process PYMIF_ENDOMORPH_FEATURES {
     def emptyMinContrastArg = meta.endomorph_empty_min_contrast != null ? "--empty-min-contrast ${meta.endomorph_empty_min_contrast}" : ""
 
     """
-    export OUT_CSV_PATH=${Utils.shellOutputPath(output_csv)}
-    export OUT_SUMMARY_CSV_PATH=${Utils.shellOutputPath(output_summary_csv)}
-
     if [ -e ${shellQuote(output_csv)} ] && [ -e ${shellQuote(output_summary_csv)} ]; then
         echo "Output already exists, skipping endo_morph feature extraction: ${output_csv}"
     else
@@ -75,6 +72,9 @@ process PYMIF_ENDOMORPH_FEATURES {
         echo "ERROR: expected summary CSV not found: ${output_summary_csv}" >&2
         exit 1
     fi
+
+    ${Utils.shellLinkOutput(output_csv)}
+    ${Utils.shellLinkOutput(output_summary_csv)}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
