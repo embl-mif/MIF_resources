@@ -7,22 +7,20 @@ process PYMIF_MIP {
     tuple val(meta), path(input_zarr)
 
     output:
-    tuple val(meta), val(output_mip_path), emit: zarr
+    tuple val(meta), env(OUT_MIP_PATH), emit: zarr
     path staged_output_mip, optional: true, emit: output_dir // to track tiles that are completed and skip them
     path "versions.yml"                       , emit: versions
 
     script:
 	output_mip = meta.mip_output_name ?: "${meta.id}_mip.ome.zarr"
     staged_output_mip = new File(output_mip.toString()).isAbsolute() ? null : output_mip
-    // Resolved here, not in the output block: on -resume the cached context's `task`
-    // has no workDir, so `task.workDir` in an output declaration is null.
-    output_mip_path = task.workDir.resolve(output_mip.toString()).toString()
-    
 	def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
     }
 
-	"""	
+	"""
+    export OUT_MIP_PATH=${Utils.shellOutputPath(output_mip)}
+
     if [ -d ${shellQuote(output_mip)} ] && [ -e ${shellQuote(output_mip)}/zarr.json -o -e ${shellQuote(output_mip)}/.zgroup ]; then
          echo "Output already exists, skipping mip: ${output_mip}"
     else

@@ -7,7 +7,7 @@ process PYMIF_FILTER {
     tuple val(meta), path(labels_zarr), path(csv_file)
 
     output:
-    tuple val(meta), val(output_labels_path), val(output_csv_path), emit: zarr_csv
+    tuple val(meta), env(OUT_LABELS_PATH), env(OUT_CSV_PATH), emit: zarr_csv
     path staged_output_labels, optional: true, emit: output_zarr // to track tiles that are completed and skip them
     path staged_output_csv, optional: true, emit: output_csv // to track tiles that are completed and skip them
     path "versions.yml"                       , emit: versions
@@ -17,10 +17,6 @@ process PYMIF_FILTER {
     staged_output_labels = new File(output_labels.toString()).isAbsolute() ? null : output_labels
     output_csv = meta.filter_csv_output_name ?: "${meta.id}_filtered_labels.csv"
     staged_output_csv = new File(output_csv.toString()).isAbsolute() ? null : output_csv
-    // Resolved here, not in the output block: on -resume the cached context's `task`
-    // has no workDir, so `task.workDir` in an output declaration is null.
-    output_labels_path = task.workDir.resolve(output_labels.toString()).toString()
-    output_csv_path = task.workDir.resolve(output_csv.toString()).toString()
 
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
@@ -31,6 +27,9 @@ process PYMIF_FILTER {
     def filtersArg = meta.filter_properties ? "--filters ${shellQuote(meta.filter_properties)}" : ""
 
     """
+    export OUT_LABELS_PATH=${Utils.shellOutputPath(output_labels)}
+    export OUT_CSV_PATH=${Utils.shellOutputPath(output_csv)}
+
     if [ -d ${shellQuote(output_labels)} ] && [ -e ${shellQuote(output_labels)}/zarr.json -o -e ${shellQuote(output_labels)}/.zgroup ]; then
         echo "Output already exists, skipping label filtering: ${output_labels}"
     else

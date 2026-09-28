@@ -7,16 +7,13 @@ process PYMIF_OTSU_LABEL {
     tuple val(meta), path(input_zarr)
 
     output:
-    tuple val(meta), val(output_labels_path), emit: zarr
+    tuple val(meta), env(OUT_LABELS_PATH), emit: zarr
     path staged_output_labels, optional: true, emit: output_zarr // to track tiles that are completed and skip them
     path "versions.yml"                       , emit: versions
 
     script:
     output_labels = meta.otsu_output_name ?: "${meta.id}_otsu_labels.ome.zarr"
     staged_output_labels = new File(output_labels.toString()).isAbsolute() ? null : output_labels
-    // Resolved here, not in the output block: on -resume the cached context's `task`
-    // has no workDir, so `task.workDir` in an output declaration is null.
-    output_labels_path = task.workDir.resolve(output_labels.toString()).toString()
 
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
@@ -26,6 +23,8 @@ process PYMIF_OTSU_LABEL {
     def otsuMultiplierArg = meta.otsu_multiplier != null ? "--otsu-multiplier ${meta.otsu_multiplier}" : ""
 
     """
+    export OUT_LABELS_PATH=${Utils.shellOutputPath(output_labels)}
+
     if [ -d ${shellQuote(output_labels)} ] && [ -e ${shellQuote(output_labels)}/zarr.json -o -e ${shellQuote(output_labels)}/.zgroup ]; then
         echo "Output already exists, skipping Otsu label: ${output_labels}"
     else

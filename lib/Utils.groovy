@@ -201,6 +201,19 @@ class Utils {
         return text ? text : null
     }
 
+    /**
+     * Shell expression for the absolute location of a process output: an absolute
+     * path is kept as-is, a relative one is anchored at the task work directory
+     * ($PWD). Modules export it and declare it as an `env` output, which Nextflow
+     * stores in .command.env, so it is also restored on -resume. (`task.workDir`
+     * cannot be used in the output block: it is null when a cached task is resumed.)
+     */
+    static String shellOutputPath(def path) {
+        def text = path.toString()
+        def quoted = "'" + text.replace("'", "'\"'\"'") + "'"
+        return text.startsWith('/') ? quoted : "\"\$PWD\"/" + quoted
+    }
+
     static String optionalCliArg(String flag, def value) {
         def normalized = normalizeOptionalText(value)
         return normalized != null ? "${flag} ${normalized}" : ""

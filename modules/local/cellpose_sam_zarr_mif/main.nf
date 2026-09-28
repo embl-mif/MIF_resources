@@ -61,7 +61,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     path(pretrained_cellpose_model)
 
     output:
-    tuple val(meta), val(output_zarr_path), emit: labels
+    tuple val(meta), env(OUT_ZARR_PATH), emit: labels
     path staged_output_zarr, optional: true, emit: labels_dir // to track tiles that are completed and skip them
 
     script:
@@ -80,9 +80,6 @@ process CELLPOSE_SAM_ZARR_MIF {
     // task work dir. When meta.labels_output_name is an absolute path (written
     // directly to shared storage), leave this null so nothing is declared.
     staged_output_zarr = new File(output_zarr.toString()).isAbsolute() ? null : output_zarr
-    // Resolved here, not in the output block: on -resume the cached context's `task`
-    // has no workDir, so `task.workDir` in an output declaration is null.
-    output_zarr_path = task.workDir.resolve(output_zarr.toString()).toString()
     def x_min_arg = Utils.optionalCliArg("--x-min", meta.x_min)
     def x_max_arg = Utils.optionalCliArg("--x-max", meta.x_max)
     def y_min_arg = Utils.optionalCliArg("--y-min", meta.y_min)
@@ -101,6 +98,8 @@ process CELLPOSE_SAM_ZARR_MIF {
     def args = task.ext.args ?: ''
 
     """
+    export OUT_ZARR_PATH=${Utils.shellOutputPath(output_zarr)}
+
     cellpose_sam_zarr.py \
         --input_zarr "${image}" \
         --output_zarr ${output_zarr} \
@@ -126,8 +125,8 @@ process CELLPOSE_SAM_ZARR_MIF {
     stub:
     output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
     staged_output_zarr = new File(output_zarr.toString()).isAbsolute() ? null : output_zarr
-    output_zarr_path = task.workDir.resolve(output_zarr.toString()).toString()
     """
+    export OUT_ZARR_PATH=${Utils.shellOutputPath(output_zarr)}
     mkdir -p ${output_zarr}
     touch ${output_zarr}/.zgroup
     """
