@@ -9,6 +9,22 @@ caller also passes explicitly overrides just that piece:
                                       source's own extent at the finest
                                       included level
   --num-levels                       keep only the first N pyramid levels
+                                      (counted from --start-level, if given)
+  --start-level                      treat this index into the source's own
+                                      pyramid as the output's level 0,
+                                      dropping everything finer. Destination
+                                      levels are always renumbered
+                                      "0","1",... regardless of this value;
+                                      reads still use the source's own path
+                                      names.
+  --drop-axes                        remove one or more axes from the
+                                      OUTPUT geometry entirely (not a size-1
+                                      crop), e.g. "c" for a label mask that
+                                      never has a channel axis. Applied last,
+                                      after all crop/level math above, using
+                                      the full (pre-drop) axis indices.
+                                      Lenient about axes the source doesn't
+                                      have.
   --zarr-format / --dtype / --data-type
 Cropping a spatial axis (z/y/x) shrinks its shape *and* shifts that axis'
 translation (scaled per pyramid level) so the cropped array's origin still
@@ -21,12 +37,13 @@ it isn't given one.
 
 If --input-zarr is omitted, there's no source to inherit from, so
 --shape/--axes/--scale/--chunks become required and the caller must state
-the full geometry directly (--num-channels, crop bounds, and --num-levels
-> 1 don't apply here -- there's no default to override or crop from;
-channel count and any channel labels are just whatever --shape/--axes and
---channel-labels say). Always single-resolution in this case, since there's
-no known downsample-factor progression to build further levels from. This
-is the mode a caller with no single source image to copy from needs -- see
+the full geometry directly (--num-channels, crop bounds, --num-levels > 1,
+--start-level, and --drop-axes don't apply here -- there's no default to
+override, crop, truncate, or drop an axis from; channel count and any
+channel labels are just whatever --shape/--axes and --channel-labels say).
+Always single-resolution in this case, since there's no known
+downsample-factor progression to build further levels from. This is the
+mode a caller with no single source image to copy from needs -- see
 preallocate_zarr_from_tiles.py, which computes shape/axes/scale/chunks/
 translation from a tile CSV and calls straight into build_skeleton() here.
 
@@ -91,6 +108,8 @@ def build_skeleton(
     data_type: str | None = None,
     num_levels: int | None = None,
     crop: dict[str, tuple[int | None, int | None]] | None = None,
+    start_level: int = 0,
+    drop_axes: set[str] | None = None,
     shape: list[int] | None = None,
     axis_names: list[str] | None = None,
     scale: list[float] | None = None,
@@ -98,14 +117,19 @@ def build_skeleton(
     translation: list[float] | None = None,
 ) -> None:
     crop = {axis: bounds for axis, bounds in (crop or {}).items() if bounds != (None, None)}
+    drop_axes = drop_axes or set()
 
     if input_path is not None:
         _build_from_input(
             output_path, dtype, input_path, num_channels, channel_labels,
-            zarr_format, data_type, num_levels, crop,
+            zarr_format, data_type, num_levels, crop, start_level, drop_axes,
         )
         return
 
+    if start_level:
+        raise ValueError("--start-level requires --input-zarr.")
+    if drop_axes:
+        raise ValueError("--drop-axes requires --input-zarr.")
     if num_channels is not None:
         raise ValueError(
             "--num-channels requires --input-zarr -- with no source there's no default "
@@ -135,7 +159,10 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
                        num_channels: int | None, channel_labels: list[str] | None,
                        zarr_format: int | None, data_type: str | None,
                        num_levels: int | None,
-                       crop: dict[str, tuple[int | None, int | None]]) -> None:
+                       crop: dict[str, tuple[int | None, int | None]],
+                       start_level: int = 0,
+                       drop_axes: set[str] | None = None) -> None:
+    drop_axes = drop_axes or set()
     src_group = zarr.open(input_path, mode="r")
     zattrs = dict(src_group.attrs)
     multiscales = zattrs.get("multiscales", [])
@@ -155,6 +182,10 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
             f"Input axes {axis_names} contain no 'c' axis; cannot place {num_channels} "
             "output channels."
         )
+    if num_channels is not None and "c" in drop_axes:
+        raise ValueError("--num-channels and --drop-axes c are mutually exclusive.")
+    if channel_labels is not None and "c" in drop_axes:
+        raise ValueError("--channel-labels and --drop-axes c are mutually exclusive.")
     for axis in crop:
         if axis not in axis_names:
             raise ValueError(
@@ -167,20 +198,31 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
     if zarr_format is None:
         zarr_format = detect_zarr_format(src_group)
 
-    datasets = multiscales[0]["datasets"]
+    all_datasets = multiscales[0]["datasets"]
+    if not (0 <= start_level < len(all_datasets)):
+        raise ValueError(
+            f"--start-level {start_level} out of range for the input's own "
+            f"{len(all_datasets)} pyramid level(s)."
+        )
+    # Anchor the output's level 0 at this index into the source's own
+    # pyramid -- everything finer is dropped. Reads below still use each
+    # kept dataset's own (source) path; destination levels are always
+    # renumbered "0","1",... below, regardless of start_level.
+    datasets = all_datasets[start_level:]
+
     if num_levels is not None:
         if num_levels < 1:
             raise ValueError(f"--num-levels must be >= 1, got {num_levels}")
         if num_levels > len(datasets):
             raise ValueError(
-                f"--num-levels {num_levels} exceeds the input's own {len(datasets)} "
-                "pyramid level(s)."
+                f"--num-levels {num_levels} exceeds the {len(datasets)} pyramid level(s) "
+                f"available from --start-level {start_level}."
             )
         datasets = datasets[:num_levels]
-        zattrs["multiscales"][0]["datasets"] = datasets
-    level_paths = [ds["path"] for ds in datasets]
+    read_level_paths = [ds["path"] for ds in datasets]
+    write_level_paths = [str(i) for i in range(len(datasets))]
 
-    base_array = src_group[level_paths[0]]
+    base_array = src_group[read_level_paths[0]]
     base_scale = tuple(datasets[0]["coordinateTransformations"][0]["scale"])
 
     # Resolve every requested crop's bounds at the base (finest included)
@@ -249,11 +291,21 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
         axis_index = axis_names.index(axis)
         base_chunks[axis_index] = min(base_chunks[axis_index], shapes[0][axis_index])
 
+    # Drop any requested axes from the OUTPUT geometry entirely (not a
+    # size-1 crop) -- applied last, after all crop/level math above used the
+    # full (pre-drop) axis indices. Lenient about axes the source doesn't have.
+    keep_indices = [i for i, name in enumerate(axis_names) if name not in drop_axes]
+    output_axis_names = tuple(axis_names[i] for i in keep_indices)
+    shapes = [tuple(shape[i] for i in keep_indices) for shape in shapes]
+    scales = [tuple(scale[i] for i in keep_indices) for scale in scales]
+    translations = [tuple(t[i] for i in keep_indices) for t in translations]
+    base_chunks = [base_chunks[i] for i in keep_indices]
+
     builder = ImagePyramidBuilder.from_shapes(
         shapes=shapes,
         base_scale=scales,
-        axes=axis_names,
-        level_paths=level_paths,
+        axes=output_axis_names,
+        level_paths=write_level_paths,
         chunks=tuple(base_chunks),
         data_type=dtype,
         zarr_format=zarr_format,
@@ -262,26 +314,38 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
     dest_root = zarr.open(output_path, mode="w", zarr_format=zarr_format)
     builder.to_zarr(dest_root)
 
-    zattrs["multiscales"][0]["version"] = "0.5" if zarr_format == 3 else "0.4"
+    ome_version = "0.5" if zarr_format == 3 else "0.4"
 
-    # Rewrite each level's own translation to reflect any crop-adjusted
-    # shift computed above (scale itself never changes under cropping).
-    for ds, level_translation in zip(zattrs["multiscales"][0]["datasets"], translations):
+    # Rebuild datasets metadata fresh from the (possibly renumbered,
+    # possibly axis-dropped) write_level_paths/scales/translations -- the
+    # source's own dataset dicts reference the full pre-drop axis count and
+    # original path names, so they can't just be patched in place once axes
+    # are dropped or start_level shifts which source level is level 0.
+    new_datasets = []
+    for path_name, level_scale, level_translation in zip(write_level_paths, scales, translations):
+        transforms = [{"type": "scale", "scale": list(level_scale)}]
         if any(level_translation):
-            transforms = [t for t in ds.get("coordinateTransformations", [])
-                          if t.get("type") != "translation"]
             transforms.append({"type": "translation", "translation": list(level_translation)})
-            ds["coordinateTransformations"] = transforms
+        new_datasets.append({"path": path_name, "coordinateTransformations": transforms})
+
+    zattrs["multiscales"][0]["version"] = ome_version
+    zattrs["multiscales"][0]["axes"] = [
+        {"name": name, "type": _axis_type(name)} for name in output_axis_names
+    ]
+    zattrs["multiscales"][0]["datasets"] = new_datasets
 
     # Needed for cases like ilastik prob stores (multiple channels/classes)
-    # and for relabeling channels without changing their count.
-    if "c" in axis_names and (num_channels is not None or channel_labels is not None):
-        channel_count = num_channels if num_channels is not None else shapes[0][channel_axis_index]
+    # and for relabeling channels without changing their count. Dropped
+    # entirely if the channel axis itself was dropped.
+    if "c" in drop_axes:
+        zattrs.pop("omero", None)
+    elif "c" in output_axis_names and (num_channels is not None or channel_labels is not None):
+        channel_count = num_channels if num_channels is not None else shapes[0][output_axis_names.index("c")]
         zattrs.setdefault("omero", {})["channels"] = _omero_channels(channel_count, channel_labels, dtype)
 
     dest_root.attrs.update(zattrs)
 
-    for path_name, shape in zip(level_paths, shapes):
+    for path_name, shape in zip(write_level_paths, shapes):
         print(f"[Prealloc] Created scale '{path_name}': shape {shape}")
     print(f"[Prealloc] Output Zarr format: v{zarr_format}")
 
@@ -388,7 +452,19 @@ def main():
                          choices=["intensity", "label", "probability"])
     parser.add_argument("--num-levels", type=int, default=None,
                          help="Requires --input-zarr. Restrict to the first N pyramid "
-                              "levels. Without --input-zarr, output is always single-level.")
+                              "levels (counted from --start-level, if given). Without "
+                              "--input-zarr, output is always single-level.")
+    parser.add_argument("--start-level", type=int, default=0,
+                         help="Requires --input-zarr. Treat this index into the source's "
+                              "own pyramid as the output's level 0, dropping everything "
+                              "finer. Destination levels are always renumbered "
+                              "'0','1',... regardless of this value; reads still use the "
+                              "source's own path names.")
+    parser.add_argument("--drop-axes", type=str, default=None,
+                         help="Requires --input-zarr. Comma-separated axis names to "
+                              "remove from the output geometry entirely (e.g. 'c' for a "
+                              "label mask that never has a channel axis). Lenient about "
+                              "axes the source doesn't have.")
     for axis in CROP_AXES:
         parser.add_argument(f"--{axis}-min", type=int, default=None,
                              help=f"Requires --input-zarr. Crop the {axis} axis to start here "
@@ -416,6 +492,7 @@ def main():
     args = parser.parse_args()
 
     channel_labels = _parse_csv_strs(args.channel_labels) if args.channel_labels else None
+    drop_axes = set(_parse_csv_strs(args.drop_axes)) if args.drop_axes else set()
     crop = {axis: (getattr(args, f"{axis}_min"), getattr(args, f"{axis}_max")) for axis in CROP_AXES}
     crop_given = {axis: bounds for axis, bounds in crop.items() if bounds != (None, None)}
     explicit_mode_args_given = any([args.shape, args.axes, args.scale, args.chunks])
@@ -432,12 +509,15 @@ def main():
                          f"but --num-channels is {args.num_channels}")
         if args.num_levels is not None and args.num_levels < 1:
             parser.error(f"--num-levels must be >= 1, got {args.num_levels}")
+        if args.start_level < 0:
+            parser.error(f"--start-level must be >= 0, got {args.start_level}")
 
         build_skeleton(
             output_path=args.output_zarr, dtype=args.dtype, input_path=args.input_zarr,
             num_channels=args.num_channels, channel_labels=channel_labels,
             zarr_format=args.zarr_format, data_type=args.data_type,
             num_levels=args.num_levels, crop=crop_given,
+            start_level=args.start_level, drop_axes=drop_axes,
         )
     else:
         if not (args.shape and args.axes and args.scale and args.chunks):
@@ -453,6 +533,10 @@ def main():
         if crop_given:
             parser.error("--<axis>-min/--<axis>-max require --input-zarr -- state the "
                          "cropped shape directly in --shape otherwise.")
+        if args.start_level:
+            parser.error("--start-level requires --input-zarr.")
+        if drop_axes:
+            parser.error("--drop-axes requires --input-zarr.")
 
         build_skeleton(
             output_path=args.output_zarr, dtype=args.dtype,
