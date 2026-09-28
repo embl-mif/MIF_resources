@@ -80,7 +80,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
             def sourceImagePath = imageUri ?: localImage.toString()
             def mergedOutputZarr = parentMeta.labels_output ?: "${val_output_dir}/${srcId}_merged_mask.ome.zarr"
             def mergedMeta = [id: srcId, dtype: 'uint32', data_type: 'label']
-            tuple(mergedMeta, '', tileCsv, sourceImagePath, mergedOutputZarr)
+            tuple(mergedMeta, sourceImagePath, tileCsv, mergedOutputZarr)
         }
 
     PREALLOCATE_ZARR(ch_merged_zarr_input)
