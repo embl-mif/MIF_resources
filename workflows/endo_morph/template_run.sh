@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=endo_morpho
+#SBATCH --job-name=endo_morph
 #SBATCH --partition=htc-el8
 #SBATCH --mem=16G
 #SBATCH --time=24:00:00
@@ -15,10 +15,10 @@ set -euo pipefail
 module load Nextflow/25.10.1
 
 # Nextflow launch/work directory. Create it before submitting this script.
-cd "/scratch/$USER/endo_morpho" # <---------- MODIFY IF NEEDED
+cd "/scratch/$USER/endo_morph" # <---------- MODIFY IF NEEDED
 
 # Exporting these variables makes them visible to Nextflow subprocesses.
-export NF_PATH="/home/$USER/projects/mif-resources/workflows/endo_morpho/main.nf" # <--- MODIFY
+export NF_PATH="/home/$USER/projects/mif-resources/workflows/endo_morph/main.nf" # <--- MODIFY
 export LIB_PATH="/home/$USER/projects/mif-resources/lib" # <--- MODIFY
 export WDIR="/PATH/TO/WORK/DIRECTORY" # <---------------- MODIFY TO YOUR DESIRED WORK LOCATION
 export CSV_PATH="/PATH/TO/batch.csv" # <----------------- MODIFY
