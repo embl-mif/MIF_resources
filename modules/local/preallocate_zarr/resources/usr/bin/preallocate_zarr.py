@@ -110,6 +110,7 @@ def build_skeleton(
     crop: dict[str, tuple[int | None, int | None]] | None = None,
     start_level: int = 0,
     drop_axes: set[str] | None = None,
+    chunks_override: list[int] | None = None,
     shape: list[int] | None = None,
     axis_names: list[str] | None = None,
     scale: list[float] | None = None,
@@ -123,6 +124,7 @@ def build_skeleton(
         _build_from_input(
             output_path, dtype, input_path, num_channels, channel_labels,
             zarr_format, data_type, num_levels, crop, start_level, drop_axes,
+            chunks_override,
         )
         return
 
@@ -161,7 +163,8 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
                        num_levels: int | None,
                        crop: dict[str, tuple[int | None, int | None]],
                        start_level: int = 0,
-                       drop_axes: set[str] | None = None) -> None:
+                       drop_axes: set[str] | None = None,
+                       chunks_override: list[int] | None = None) -> None:
     drop_axes = drop_axes or set()
     src_group = zarr.open(input_path, mode="r")
     zattrs = dict(src_group.attrs)
@@ -487,11 +490,6 @@ def main():
     parser.add_argument("--scale", type=str, default=None,
                          help="No --input-zarr: comma-separated per-axis voxel size, "
                               "matching --shape.")
-    parser.add_argument("--chunks", type=str, default=None,
-                         help="No --input-zarr: comma-separated per-axis chunk size, "
-                              "matching --shape. Required -- never inferred (e.g. a "
-                              "stitching merge target needs this set to the tiling "
-                              "stride so tile writes land on chunk boundaries).")
     parser.add_argument("--translation", type=str, default=None,
                          help="No --input-zarr: comma-separated per-axis physical-space "
                               "origin, matching --shape. Defaults to all zeros if omitted.")
