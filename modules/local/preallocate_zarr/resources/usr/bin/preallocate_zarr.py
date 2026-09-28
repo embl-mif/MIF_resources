@@ -300,6 +300,13 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
     scales = [tuple(scale[i] for i in keep_indices) for scale in scales]
     translations = [tuple(t[i] for i in keep_indices) for t in translations]
     base_chunks = [base_chunks[i] for i in keep_indices]
+    if chunks_override is not None:
+        if len(chunks_override) != len(output_axis_names):
+            raise ValueError(
+                f"--chunks has {len(chunks_override)} entries, but the output has "
+                f"{len(output_axis_names)} axes {output_axis_names} (after any --drop-axes)."
+            )
+        base_chunks = list(chunks_override)
 
     builder = ImagePyramidBuilder.from_shapes(
         shapes=shapes,
@@ -488,14 +495,19 @@ def main():
     parser.add_argument("--translation", type=str, default=None,
                          help="No --input-zarr: comma-separated per-axis physical-space "
                               "origin, matching --shape. Defaults to all zeros if omitted.")
-
+    parser.add_argument("--chunks", type=str, default=None,
+                         help="Comma-separated per-axis chunk size. With --input-zarr, "
+                              "optional -- overrides the source's own inherited chunk "
+                              "shape, given in terms of the OUTPUT's axes (after any "
+                              "--drop-axes), e.g. to align with a tiling stride. Without "
+                              "--input-zarr, required, matching --shape.")
     args = parser.parse_args()
 
     channel_labels = _parse_csv_strs(args.channel_labels) if args.channel_labels else None
     drop_axes = set(_parse_csv_strs(args.drop_axes)) if args.drop_axes else set()
     crop = {axis: (getattr(args, f"{axis}_min"), getattr(args, f"{axis}_max")) for axis in CROP_AXES}
     crop_given = {axis: bounds for axis, bounds in crop.items() if bounds != (None, None)}
-    explicit_mode_args_given = any([args.shape, args.axes, args.scale, args.chunks])
+    explicit_mode_args_given = any([args.shape, args.axes, args.scale])
 
     if args.input_zarr and explicit_mode_args_given:
         parser.error("--input-zarr and --shape/--axes/--scale/--chunks are mutually "
@@ -518,6 +530,7 @@ def main():
             zarr_format=args.zarr_format, data_type=args.data_type,
             num_levels=args.num_levels, crop=crop_given,
             start_level=args.start_level, drop_axes=drop_axes,
+            chunks_override=_parse_csv_ints(args.chunks) if args.chunks else None,
         )
     else:
         if not (args.shape and args.axes and args.scale and args.chunks):
