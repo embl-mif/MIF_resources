@@ -48,7 +48,6 @@ process PREALLOCATE_ZARR {
         preallocate_zarr.py \\
             --input-zarr "${input_zarr}" \\
             --output-zarr "${output_zarr}" \\
-            --drop-axes c \\
             ${dtype_arg} \\
             ${zarr_format_arg} \\
             ${data_type_arg} \\

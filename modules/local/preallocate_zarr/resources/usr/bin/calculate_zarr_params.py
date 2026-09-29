@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 
-"""Compute the --start-level/--<axis>-min/--<axis>-max/--chunks flags that
-let preallocate_zarr.py build the merged-segmentation OME-Zarr store as a
-real crop of the original image's own pyramid.
+"""Compute the --drop-axes/--start-level/--<axis>-min/--<axis>-max/--chunks
+flags that let preallocate_zarr.py build the merged-segmentation OME-Zarr
+store as a real crop of the original image's own pyramid.
 
 Prints (to stdout, one line, space-separated) rather than building anything
 itself, so it can be dropped into a Nextflow process's script block via
-command substitution ahead of the actual preallocate_zarr.py call:
+command substitution ahead of the actual preallocate_zarr.py call. Note that
+this script's own --drop-axes output already includes 'c' (a label store
+never needs a channel axis) plus any other axis that collapses to a single
+entry -- callers should NOT also pass a hardcoded --drop-axes of their own,
+since preallocate_zarr.py only keeps the last --drop-axes given on its
+command line:
 
     params=$(calculate_zarr_params.py --tiles-csv "${tiles_csv}" \
         --source-zarr "${source_zarr}")
     preallocate_zarr.py --input-zarr "${source_zarr}" \
-        --output-zarr "${output_zarr}" --drop-axes c \
+        --output-zarr "${output_zarr}" \
         --dtype uint32 --data-type label $params
 """
 
@@ -45,30 +50,43 @@ def calculate_params(tiles_csv: str, source_zarr: str) -> dict:
     # loops over every 't' frame itself within a single tile task, and no two
     # tile tasks ever write overlapping 't' ranges of the same x/y/z region).
     # Any axis the source actually has that the tile CSV doesn't know about
-    # must pass through uncropped, with one chunk spanning its whole extent --
-    # there's no cross-task write boundary to protect on that axis.
+    # must either:
+    #   - collapse entirely, if it only has a single entry (e.g. a one-round
+    #     acquisition's 't' axis) -- dropped via --drop-axes, same as 'c'
+    #     always is for a label store; or
+    #   - pass through uncropped, with one chunk spanning its whole extent,
+    #     if it has more than one entry -- there's still no cross-task write
+    #     boundary to protect on that axis, so a single whole-extent chunk
+    #     stays safe even though the axis itself has to be kept.
     src_group = zarr.open(source_zarr, mode="r")
     src_axis_names = tuple(axis["name"] for axis in OMEZarrMetadata(src_group).axes)
     level_shape = src_group[str(resolution_level)].shape
 
-    # Final axis order matches the SOURCE's own axis order (what
-    # preallocate_zarr.py's output_axis_names will be), not the tile CSV's
-    # z/y/x order, and excludes 'c' -- callers of this script always pass
-    # --drop-axes c to preallocate_zarr.py downstream of these flags.
-    axis_order = tuple(axis for axis in src_axis_names if axis != "c")
-    bounds = {axis: tile_bounds[axis] for axis in axis_order if axis in tile_bounds}
-    chunks_by_axis = {
-        axis: (
-            tile_chunks[axis]
-            if axis in tile_chunks
-            else level_shape[src_axis_names.index(axis)]
-        )
-        for axis in axis_order
-    }
+    drop_axes = {"c"}
+    axis_order = []
+    bounds = {}
+    chunks_by_axis = {}
+
+    for axis in src_axis_names:
+        if axis == "c":
+            continue  # always dropped -- label store never has a channel axis
+        if axis in tile_axis_order:
+            axis_order.append(axis)
+            bounds[axis] = tile_bounds[axis]
+            chunks_by_axis[axis] = tile_chunks[axis]
+            continue
+
+        extent = level_shape[src_axis_names.index(axis)]
+        if extent == 1:
+            drop_axes.add(axis)  # safe squeeze -- single-entry axis, nothing lost
+        else:
+            axis_order.append(axis)
+            chunks_by_axis[axis] = extent  # uncropped, whole-extent chunk
 
     return {
         "resolution_level": resolution_level,
-        "axis_order": axis_order,
+        "drop_axes": drop_axes,
+        "axis_order": tuple(axis_order),
         "bounds": bounds,
         "chunks": chunks_by_axis,
     }
@@ -79,6 +97,8 @@ def format_as_flags(params: dict) -> str:
     flags -- comma-joined per flag, space-separated between flags, safe for
     a shell to word-split via `$(...)` command substitution."""
     flags = [f"--start-level {params['resolution_level']}"]
+    if params["drop_axes"]:
+        flags.append(f"--drop-axes {','.join(sorted(params['drop_axes']))}")
     for axis in params["axis_order"]:
         bounds = params["bounds"].get(axis)
         if bounds is not None:
@@ -92,9 +112,9 @@ def format_as_flags(params: dict) -> str:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Compute the merged-segmentation OME-Zarr store's --input-zarr-mode "
-                     "flags (--start-level / crop bounds / --chunks) from its tile CSV's "
-                     "own ROI bounds and resolution_level, plus the source zarr's own "
-                     "axes for anything the tile CSV doesn't cover (e.g. 't')."
+                     "flags (--drop-axes / --start-level / crop bounds / --chunks) from "
+                     "its tile CSV's own ROI bounds and resolution_level, plus the source "
+                     "zarr's own axes for anything the tile CSV doesn't cover (e.g. 't')."
     )
 
     parser.add_argument("--tiles-csv", type=str, required=True)
