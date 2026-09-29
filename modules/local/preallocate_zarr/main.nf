@@ -44,7 +44,7 @@ process PREALLOCATE_ZARR {
     def command
     if (from_tiles) {
         command = """
-        params=\$(calculate_zarr_params.py --tiles-csv "${tiles_csv}")
+        params=\$(calculate_zarr_params.py --tiles-csv "${tiles_csv}" --source-zarr "${input_zarr}")
         preallocate_zarr.py \\
             --input-zarr "${input_zarr}" \\
             --output-zarr "${output_zarr}" \\
