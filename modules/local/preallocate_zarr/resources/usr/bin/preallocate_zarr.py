@@ -1,54 +1,23 @@
 #!/usr/bin/env python3
 """Preallocate an empty OME-Zarr skeleton.
 
-If --input-zarr is given, geometry and metadata (axes, scale, chunks, omero
-channels, data_type) are inherited from that existing store; anything the
-caller also passes explicitly overrides just that piece:
-  --num-channels/--channel-labels   remap/label the channel axis
-  --<axis>-min/--<axis>-max          crop any of t/z/y/x relative to the
-                                      source's own extent at the finest
-                                      included level
-  --num-levels                       keep only the first N pyramid levels
-                                      (counted from --start-level, if given)
-  --start-level                      treat this index into the source's own
-                                      pyramid as the output's level 0,
-                                      dropping everything finer. Destination
-                                      levels are always renumbered
-                                      "0","1",... regardless of this value;
-                                      reads still use the source's own path
-                                      names.
-  --drop-axes                        remove one or more axes from the
-                                      OUTPUT geometry entirely (not a size-1
-                                      crop), e.g. "c" for a label mask that
-                                      never has a channel axis. Applied last,
-                                      after all crop/level math above, using
-                                      the full (pre-drop) axis indices.
-                                      Lenient about axes the source doesn't
-                                      have.
-  --zarr-format / --dtype / --data-type
-Cropping a spatial axis (z/y/x) shrinks its shape *and* shifts that axis'
-translation (scaled per pyramid level) so the cropped array's origin still
-lines up with the source image's own physical coordinate space. Cropping
-the time axis only shrinks its shape and records the kept range in a
-'t_range' field -- NGFF technically allows a translation on a time axis,
-but nothing here ever needs to reconcile a time crop back against a shared
-physical time coordinate the way spatial crops do against image space, so
-it isn't given one.
+Two modes:
 
-If --input-zarr is omitted, there's no source to inherit from, so
---shape/--axes/--scale/--chunks become required and the caller must state
-the full geometry directly (--num-channels, crop bounds, --num-levels > 1,
---start-level, and --drop-axes don't apply here -- there's no default to
-override, crop, truncate, or drop an axis from; channel count and any
-channel labels are just whatever --shape/--axes and --channel-labels say).
-Always single-resolution in this case, since there's no known
-downsample-factor progression to build further levels from. This is the
-mode a caller with no single source image to copy from needs -- see
-preallocate_zarr_from_tiles.py, which computes shape/axes/scale/chunks/
-translation from a tile CSV and calls straight into build_skeleton() here.
+1. --input-zarr given: inherit shape/axes/scale/dtype-adjacent metadata from
+   an existing OME-Zarr store (any combination of NGFF 0.4/0.5, Zarr format
+   2/3). Optionally override the channel count/labels (--num-channels/
+   --channel-labels), restrict to a crop window per axis (--<axis>-min/
+   --<axis>-max, in voxel coordinates at the finest *included* pyramid
+   level), restrict the pyramid depth (--num-levels, --start-level), drop an
+   axis from the output entirely (--drop-axes, e.g. 'c' for a label mask),
+   and/or override the inherited chunk shape (--chunks, given in terms of
+   the OUTPUT's own axes after any --drop-axes -- useful to align chunk
+   boundaries with a tiling stride for safe concurrent writes into a shared
+   merged store).
 
-Uses ngio's ImagePyramidBuilder for v2/v3 dual support. See
-https://github.com/BioVisionCenter/ngio
+2. No --input-zarr: build a fresh, single-level skeleton directly from
+   explicit --shape/--axes/--scale/--chunks/--translation geometry, with no
+   source to inherit metadata from.
 """
 
 import argparse
@@ -57,7 +26,7 @@ import math
 import zarr
 from ngio.common._pyramid import ImagePyramidBuilder
 
-from ome_zarr_store import detect_ome_version, detect_zarr_format
+from ome_zarr_store import OMEZarrMetadata
 
 CROP_AXES = ("t", "z", "y", "x")
 SPATIAL_AXES = ("z", "y", "x")
@@ -167,17 +136,13 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
                        chunks_override: list[int] | None = None) -> None:
     drop_axes = drop_axes or set()
     src_group = zarr.open(input_path, mode="r")
+    md = OMEZarrMetadata(src_group)
+
     zattrs = dict(src_group.attrs)
-    multiscales = zattrs.get("multiscales", [])
-    if not multiscales:
-        raise ValueError(f"Input Zarr '{input_path}' lacks 'multiscales' metadata.")
     if data_type is not None:
         zattrs["data_type"] = data_type
 
-    axes_meta = multiscales[0].get("axes", [])
-    axis_names = tuple(
-        (axis.get("name") if isinstance(axis, dict) else axis) for axis in axes_meta
-    )
+    axis_names = tuple(axis["name"] for axis in md.axes)
     channel_axis_index = axis_names.index("c") if "c" in axis_names else None
 
     if num_channels is not None and channel_axis_index is None:
@@ -196,21 +161,15 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
                 f"--{axis}-min/--{axis}-max."
             )
 
-    # Default: output format matches the input's own storage format, unless
-    # explicitly overridden.
     if zarr_format is None:
-        zarr_format = detect_zarr_format(src_group)
+        zarr_format = md.zarr_format
 
-    all_datasets = multiscales[0]["datasets"]
+    all_datasets = md.datasets  # [{"path", "scale", "translation"}, ...] -- already resolved
     if not (0 <= start_level < len(all_datasets)):
         raise ValueError(
             f"--start-level {start_level} out of range for the input's own "
             f"{len(all_datasets)} pyramid level(s)."
         )
-    # Anchor the output's level 0 at this index into the source's own
-    # pyramid -- everything finer is dropped. Reads below still use each
-    # kept dataset's own (source) path; destination levels are always
-    # renumbered "0","1",... below, regardless of start_level.
     datasets = all_datasets[start_level:]
 
     if num_levels is not None:
@@ -226,10 +185,8 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
     write_level_paths = [str(i) for i in range(len(datasets))]
 
     base_array = src_group[read_level_paths[0]]
-    base_scale = tuple(datasets[0]["coordinateTransformations"][0]["scale"])
+    base_scale = tuple(datasets[0]["scale"])
 
-    # Resolve every requested crop's bounds at the base (finest included)
-    # level, in that level's own voxel coordinates, clipped to its real extent.
     base_crop: dict[str, tuple[int, int]] = {}
     for axis, (crop_min, crop_max) in crop.items():
         axis_index = axis_names.index(axis)
@@ -248,34 +205,19 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
     for ds in datasets:
         src_array = src_group[ds["path"]]
         level_shape = list(src_array.shape)
-        level_scale = ds["coordinateTransformations"][0]["scale"]
+        level_scale = ds["scale"]
+        level_translation = list(ds["translation"])
 
-        # Existing translation on this dataset, if any -- cropping shifts
-        # relative to whatever the source already had, never assumes zero.
-        level_translation = [0.0] * len(axis_names)
-        for transform in ds["coordinateTransformations"]:
-            if transform.get("type") == "translation":
-                level_translation = list(transform["translation"])
-
-        # Only remap the channel axis if --num-channels was explicitly given.
         if num_channels is not None:
             level_shape[channel_axis_index] = num_channels
 
         for axis, (base_start, base_end) in base_crop.items():
             axis_index = axis_names.index(axis)
-            # Crop bounds were given relative to the base level -- rescale to
-            # this level's own voxel coordinates before applying, since
-            # spatial axes are typically downsampled level-to-level (the time
-            # axis normally isn't, so this is a no-op for it).
             start = _rescale_crop_bound(base_start, base_scale[axis_index], level_scale[axis_index])
             end = _rescale_crop_bound(base_end, base_scale[axis_index], level_scale[axis_index])
             start, end = int(math.floor(start)), min(int(math.ceil(end)), src_array.shape[axis_index])
             level_shape[axis_index] = end - start
             if axis in SPATIAL_AXES:
-                # Physical-space shift so this level's cropped origin still
-                # lines up with the source's own coordinate space -- NGFF
-                # applies translation after scale, so it's start-voxels *
-                # this level's own voxel size, not the base level's.
                 level_translation[axis_index] += start * level_scale[axis_index]
 
         shapes.append(tuple(level_shape))
@@ -283,8 +225,6 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
         translations.append(tuple(level_translation))
 
     if "t" in base_crop:
-        # Informational only -- see module docstring for why time doesn't
-        # get a translation adjustment the way spatial axes do.
         zattrs["t_range"] = list(base_crop["t"])
 
     base_chunks = list(base_array.chunks)
@@ -294,9 +234,6 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
         axis_index = axis_names.index(axis)
         base_chunks[axis_index] = min(base_chunks[axis_index], shapes[0][axis_index])
 
-    # Drop any requested axes from the OUTPUT geometry entirely (not a
-    # size-1 crop) -- applied last, after all crop/level math above used the
-    # full (pre-drop) axis indices. Lenient about axes the source doesn't have.
     keep_indices = [i for i, name in enumerate(axis_names) if name not in drop_axes]
     output_axis_names = tuple(axis_names[i] for i in keep_indices)
     shapes = [tuple(shape[i] for i in keep_indices) for shape in shapes]
@@ -326,11 +263,6 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
 
     ome_version = "0.5" if zarr_format == 3 else "0.4"
 
-    # Rebuild datasets metadata fresh from the (possibly renumbered,
-    # possibly axis-dropped) write_level_paths/scales/translations -- the
-    # source's own dataset dicts reference the full pre-drop axis count and
-    # original path names, so they can't just be patched in place once axes
-    # are dropped or start_level shifts which source level is level 0.
     new_datasets = []
     for path_name, level_scale, level_translation in zip(write_level_paths, scales, translations):
         transforms = [{"type": "scale", "scale": list(level_scale)}]
@@ -338,20 +270,31 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
             transforms.append({"type": "translation", "translation": list(level_translation)})
         new_datasets.append({"path": path_name, "coordinateTransformations": transforms})
 
-    zattrs["multiscales"][0]["version"] = ome_version
-    zattrs["multiscales"][0]["axes"] = [
-        {"name": name, "type": _axis_type(name)} for name in output_axis_names
-    ]
-    zattrs["multiscales"][0]["datasets"] = new_datasets
+    new_ms = {
+        "version": ome_version,
+        "name": "/",
+        "axes": [{"name": name, "type": _axis_type(name)} for name in output_axis_names],
+        "datasets": new_datasets,
+        "type": md.downsample_method,
+    }
+    new_ome_attrs = {"multiscales": [new_ms]}
 
-    # Needed for cases like ilastik prob stores (multiple channels/classes)
-    # and for relabeling channels without changing their count. Dropped
-    # entirely if the channel axis itself was dropped.
     if "c" in drop_axes:
-        zattrs.pop("omero", None)
+        pass  # no omero block for a channel-less output
     elif "c" in output_axis_names and (num_channels is not None or channel_labels is not None):
         channel_count = num_channels if num_channels is not None else shapes[0][output_axis_names.index("c")]
-        zattrs.setdefault("omero", {})["channels"] = _omero_channels(channel_count, channel_labels, dtype)
+        new_ome_attrs["omero"] = {"channels": _omero_channels(channel_count, channel_labels, dtype)}
+
+    # Nest under "ome" for the OUTPUT's own version/format -- independent of
+    # how the input happened to store it, since --zarr-format can convert
+    # between v2 and v3.
+    zattrs.pop("multiscales", None)
+    zattrs.pop("omero", None)
+    zattrs.pop("ome", None)
+    if zarr_format == 3:
+        zattrs["ome"] = new_ome_attrs
+    else:
+        zattrs.update(new_ome_attrs)
 
     dest_root.attrs.update(zattrs)
 
