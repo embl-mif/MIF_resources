@@ -11,8 +11,6 @@ workflow {
 
     def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
-    def default_zarr_dir = "${file(params.default_outdir)}/zarr"
-
     pymif_inputs_ch = input_csv_ch
         .splitCsv(header: true)
         .map { row ->
@@ -21,18 +19,9 @@ workflow {
 
             def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
                 ?: "${input_dataset.simpleName}_${index + 1}"
-            
-            def requested_zarr_output = Utils.normalizeOptionalText(row.output)
-            if (requested_zarr_output && !file(requested_zarr_output).isAbsolute()) {
-                error(
-                    "zarr_output must be an absolute path (dataset_id=${dataset_id}): " +
-                    "got '${requested_zarr_output}'. Leave the column blank to use the " +
-                    "default location under outdir instead."
-                )
-            }
-            def resolved_zarr_output = requested_zarr_output
-                ?: "${default_zarr_dir}/${dataset_id}.ome.zarr"
-            
+
+            def resolved_zarr_output = Utils.resolveOutput(row, 'output', "${dataset_id}.ome.zarr", dataset_id)
+
             def meta = row + [
                 id                       : dataset_id,
                 zarr_output_name         : resolved_zarr_output,
