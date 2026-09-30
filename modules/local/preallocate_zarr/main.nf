@@ -4,16 +4,22 @@ process PREALLOCATE_ZARR {
     conda "${moduleDir}/environment.yml"
 
     input:
-    tuple val(meta), val(input_zarr), path(tiles_csv), val(output_zarr)
+    tuple val(meta), path(local_input_zarr), val(input_zarr_uri), path(tiles_csv), val(output_zarr)
 
     output:
-    tuple val(meta), val(output_zarr), emit: zarr
-    path "versions.yml",               emit: versions
+    tuple val(meta), path(output_zarr_link), emit: zarr
+    path "versions.yml",                     emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
+    // Same local-or-remote split as CELLPOSE_SAM_ZARR_MIF's `image_uri ?: local_image` --
+    // keeps this module correct today (conda, no container) and ready if it ever runs in
+    // a container later, since `path(local_input_zarr)` is properly staged/bind-visible
+    // either way, unlike a raw val string would be.
+    def input_zarr = input_zarr_uri ?: local_input_zarr
+
     def args = task.ext.args ?: ''
 
     def num_channels_arg   = meta.num_channels   != null ? "--num-channels ${meta.num_channels}"                   : ""
@@ -37,9 +43,17 @@ process PREALLOCATE_ZARR {
 
     def from_tiles = tiles_csv.name != 'NO_FILE'
 
-    if (!input_zarr) {
-    error "PREALLOCATE_ZARR (${meta.id}): input_zarr (the original OME-Zarr image) is required."
+    // local_input_zarr is always a real, non-null staged path -- either the actual local
+    // store or the NO_FILE sentinel -- so presence must be checked by name, not
+    // truthiness (same pitfall documented elsewhere for other sentinel-backed inputs).
+    def hasLocalInput = local_input_zarr.name != 'NO_FILE'
+    if (!input_zarr_uri && !hasLocalInput) {
+        error "PREALLOCATE_ZARR (${meta.id}): input_zarr (the original OME-Zarr image) is required."
     }
+
+    // A `path` output must live in the work dir: an absolute output is exposed there as a
+    // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
+    def output_zarr_link = new File(output_zarr.toString()).name
 
     def command
     if (from_tiles) {
@@ -80,6 +94,8 @@ process PREALLOCATE_ZARR {
 
     """
     ${command}
+
+    ${Utils.shellLinkOutput(output_zarr)}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
