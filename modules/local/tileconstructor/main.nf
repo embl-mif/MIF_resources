@@ -5,13 +5,13 @@ process TILE_CONSTRUCTOR {
     container "docker://registry.git.embl.org/grp-cba/containers/zarr_tools:0.34.0"
 
     input:
-    tuple val(meta), val(image_uri)
+    tuple val(meta), path(local_image), val(image_uri)
 
     output:
     tuple val(meta), path("*_tiles.csv"), emit: tiles
 
     script:
-    def image = image_uri
+    def image = image_uri ?: local_image
     def output_csv = "${meta.id}_tiles.csv"
     def resolution_level_arg = meta.resolution_level != null ? "--resolution-level ${meta.resolution_level}" : ""
     def tile_size_x_arg = meta.tile_size_x != null ? "--tile-size-x ${meta.tile_size_x}" : ""
@@ -48,7 +48,7 @@ process TILE_CONSTRUCTOR {
     """
 
     stub:
-    def image = image_uri
+    def image = image_uri ?: local_image
     def output_csv = "${meta.id}_tiles.csv"
     """
     cat > ${output_csv} <<-END_TILE_CSV
