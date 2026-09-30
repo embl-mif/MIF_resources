@@ -201,6 +201,22 @@ class Utils {
         return text ? text : null
     }
 
+    /**
+     * Shell command that exposes an absolute process output in the task work directory,
+     * as a symlink named after the file. Modules declare that name as their `path`
+     * output: Nextflow only accepts `path` outputs inside the work directory, and the
+     * link lets it track an output written elsewhere and re-check on -resume that it
+     * still exists. Empty for a relative output, which already lives in the work dir.
+     */
+    static String shellLinkOutput(def path) {
+        def text = path.toString()
+        if (!new File(text).isAbsolute()) {
+            return ''
+        }
+        def quote = { String s -> "'" + s.replace("'", "'\"'\"'") + "'" }
+        return "ln -sfn ${quote(text)} ${quote(new File(text).name)}"
+    }
+
     static String optionalCliArg(String flag, def value) {
         def normalized = normalizeOptionalText(value)
         return normalized != null ? "${flag} ${normalized}" : ""
@@ -216,6 +232,23 @@ class Utils {
         text = text.replaceAll(/^"+/, '').replaceAll(/"+$/, '')
         text = text.replaceAll(/^'+/, '').replaceAll(/'+$/, '')
         return text
+    }
+
+    /**
+     * Resolves an output location from a samplesheet row: the value of `columnName`
+     * when it is an absolute path, `defaultPath` when the cell is blank. A relative
+     * path is rejected, because it would silently land in the task work directory.
+     */
+    static String resolveOutput(def row, String columnName, String defaultPath, String datasetId) {
+        def requested = normalizeOptionalText(row[columnName])
+        if (requested && !new File(requested).isAbsolute()) {
+            throw new IllegalArgumentException(
+                "${columnName} must be an absolute path (dataset_id=${datasetId}): " +
+                "got '${requested}'. Leave the column blank to use the default location " +
+                "instead (${defaultPath})."
+            )
+        }
+        return requested ?: defaultPath
     }
 
     static String resolvePath(String uri, String samplesheetPath) {

@@ -10,8 +10,9 @@ One dataset per row. Required column:
 - `input`: path to the input microscopy dataset.
 
 `output` (path of the converted OME-Zarr) is optional: give an absolute path
-to control it, or leave it blank to use
-`<default_outdir>/zarr/<dataset_id>.ome.zarr`.
+to write it there, or leave it blank to keep `<dataset_id>.ome.zarr` in the
+Nextflow work directory of the task (a relative path is rejected). Set an
+absolute path for anything you want to keep.
 
 The other columns are optional and map to `pymif 2zarr` arguments:
 
@@ -51,7 +52,6 @@ sample_02,/data/experiment/sample_02.ome.tiff,opera,,,0,3,1 2 2,"DAPI,GFP",
 | Parameter | Default | Purpose |
 | --- | --- | --- |
 | `--input_csv` | – (required) | Input CSV. |
-| `--default_outdir` | `results` | Base directory for `output` when a row leaves it blank. |
 
 ## Running the workflow
 
