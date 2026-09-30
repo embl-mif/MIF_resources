@@ -1,6 +1,7 @@
 include { TILE_CONSTRUCTOR      } from '../../../modules/local/tileconstructor/main'
 include { CELLPOSE_SAM_ZARR_MIF } from '../../../modules/local/cellpose_sam_zarr_mif/main'
 include { PREALLOCATE_ZARR      } from '../../../modules/local/preallocate_zarr/main'
+include { POPULATE_PYRAMID      } from '../../../modules/local/populate_pyramid/main'
 include { FIND_TILE_NEIGHBORS   } from '../../../modules/local/find_tile_neighbors/main'
 include { LOCAL_LABEL_MATCHER   } from '../../../modules/local/local_label_matcher/main'
 include { LABEL_SOLVER          } from '../../../modules/local/label_solver/main'
@@ -22,6 +23,13 @@ workflow TILED_CELLPOSE_SAM_ZARR {
     def noNeighborZarr  = file("${repoRootDir}/assets/NO_FILE")
     def noImageSentinel = file("${repoRootDir}/assets/NO_FILE")
 
+    // Labels are unique per-cell integers -- any averaging/interpolating
+    // downsample method would blend adjacent IDs into meaningless values.
+    // 'nearest' (stride sampling) is the only method that guarantees every
+    // downsampled pixel is still a real label that existed in the source,
+    // so it's hardcoded here rather than exposed as a workflow parameter.
+    def labelDownsampleMethod = 'nearest'
+
     ch_split_images = ch_images.map { meta, image ->
         def (localImage, imageUri) = Utils.splitImageInput(image, noImageSentinel)
         tuple(meta.id, meta, image, localImage, imageUri)
@@ -32,8 +40,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
     ch_merged_zarr_input = TILE_CONSTRUCTOR.out.tiles
         .map { parentMeta, tileCsv -> tuple(parentMeta.id, tileCsv) }
         .join( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(id, meta, localImage, imageUri) } )
-        .map { srcId, tileCsv,parentMeta, localImage, imageUri ->
-            def sourceImagePath = imageUri ?: localImage.toString()
+        .map { srcId, tileCsv, parentMeta, localImage, imageUri ->
             // No output dir is required here anymore: same whole-workflow
             // policy as the entry-point workflow's own defaults -- when the
             // caller hasn't set meta.labels_output, this falls back to a
@@ -41,7 +48,11 @@ workflow TILED_CELLPOSE_SAM_ZARR {
             // shared-storage location.
             def mergedOutputZarr = Utils.resolveOutput(parentMeta, 'labels_output', "${srcId}_merged_mask.ome.zarr", srcId)
             def mergedMeta = [id: srcId, dtype: 'uint32', data_type: 'label']
-            tuple(mergedMeta, sourceImagePath, tileCsv, mergedOutputZarr)
+            // localImage/imageUri passed through as-is (already split by
+            // Utils.splitImageInput in ch_split_images) -- PREALLOCATE_ZARR
+            // takes the same path(local)/val(uri) pair CELLPOSE_SAM_ZARR_MIF
+            // does, rather than a single pre-collapsed string.
+            tuple(mergedMeta, localImage, imageUri, tileCsv, mergedOutputZarr)
         }
 
     PREALLOCATE_ZARR(ch_merged_zarr_input)
@@ -180,7 +191,12 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .join( ch_write_confirmed )
         .map { _srcId, meta, store, _confirmations -> tuple(meta, store) }
 
+    POPULATE_PYRAMID(
+        ch_mask_ready.map { meta, store -> tuple(meta, store, labelDownsampleMethod) }
+    )
+    ch_versions = ch_versions.mix(POPULATE_PYRAMID.out.versions)
+
     emit:
-    mask     = ch_mask_ready   // channel: [ meta, merged_mask.ome.zarr ]
-    versions = ch_versions     // channel: [ versions.yml ]
+    mask     = POPULATE_PYRAMID.out.zarr   // channel: [ meta, merged_mask.ome.zarr (all pyramid levels populated) ]
+    versions = ch_versions                 // channel: [ versions.yml ]
 }
