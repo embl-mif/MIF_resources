@@ -11,7 +11,6 @@ workflow TILED_CELLPOSE_SAM_ZARR {
     take:
     ch_images              // channel: [ meta, image_path ] -- meta already carries
                            // per-image segmentation_channels/halo/use_physical_units
-    val_output_dir         // string:  base output dir for merged labels if not specified in csv per image file
     val_label_offset_step  // integer: per-tile global label-id offset step
     val_multicut_beta      // float:   LABEL_SOLVER multicut beta parameter
 
@@ -35,7 +34,12 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .join( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(id, meta, localImage, imageUri) } )
         .map { srcId, tileCsv,parentMeta, localImage, imageUri ->
             def sourceImagePath = imageUri ?: localImage.toString()
-            def mergedOutputZarr = Utils.resolveOutput(parentMeta, 'labels_output', "${val_output_dir}/${srcId}_merged_mask.ome.zarr", srcId)
+            // No output dir is required here anymore: same whole-workflow
+            // policy as the entry-point workflow's own defaults -- when the
+            // caller hasn't set meta.labels_output, this falls back to a
+            // bare relative filename (work dir), not a forced absolute
+            // shared-storage location.
+            def mergedOutputZarr = Utils.resolveOutput(parentMeta, 'labels_output', "${srcId}_merged_mask.ome.zarr", srcId)
             def mergedMeta = [id: srcId, dtype: 'uint32', data_type: 'label']
             tuple(mergedMeta, sourceImagePath, tileCsv, mergedOutputZarr)
         }
