@@ -25,9 +25,10 @@ workflow TILED_CELLPOSE_SAM_ZARR {
 
     // Labels are unique per-cell integers -- any averaging/interpolating
     // downsample method would blend adjacent IDs into meaningless values.
-    // 'nearest' (stride sampling) is the only method that guarantees every
-    // downsampled pixel is still a real label that existed in the source,
-    // so it's hardcoded here rather than exposed as a workflow parameter.
+    // populate_pyramid.py only accepts 'Average' or 'Sample' -- 'Sample'
+    // (stride sampling) is the one that guarantees every downsampled pixel
+    // is still a real label that existed in the source, so it's hardcoded
+    // here rather than exposed as a workflow parameter.
     def labelDownsampleMethod = 'Sample'
 
     ch_split_images = ch_images.map { meta, image ->
@@ -35,7 +36,12 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         tuple(meta.id, meta, image, localImage, imageUri)
     }
 
-    TILE_CONSTRUCTOR( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(meta, imageUri ?: localImage.toString()) } )
+    // Pass the already-split local/uri pair straight through -- .toString()
+    // on localImage here would be unreliable, since it's a Path taken from
+    // an upstream process's own `path` output (PYMIF_CONVERSION.out.zarr),
+    // and only resolves correctly when re-staged via a proper `path` input
+    // declaration on the receiving process, not when flattened to a string.
+    TILE_CONSTRUCTOR( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(meta, localImage, imageUri) } )
 
     ch_merged_zarr_input = TILE_CONSTRUCTOR.out.tiles
         .map { parentMeta, tileCsv -> tuple(parentMeta.id, tileCsv) }
