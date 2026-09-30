@@ -1,6 +1,6 @@
 process TILE_CONSTRUCTOR {
     tag "$meta.id"
-    label "light"
+    label 'process_low'
 
     container "docker://registry.git.embl.org/grp-cba/containers/zarr_tools:0.34.0"
 

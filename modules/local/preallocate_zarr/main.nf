@@ -4,7 +4,7 @@ process PREALLOCATE_ZARR {
     conda "${moduleDir}/environment.yml"
 
     input:
-    tuple val(meta), val(input_zarr), path(tiles_csv), val(input_image_path), val(output_zarr)
+    tuple val(meta), val(input_zarr), path(tiles_csv), val(output_zarr)
 
     output:
     tuple val(meta), val(output_zarr), emit: zarr
@@ -37,21 +37,21 @@ process PREALLOCATE_ZARR {
 
     def from_tiles = tiles_csv.name != 'NO_FILE'
 
-    if (from_tiles && input_zarr) {
-        error "PREALLOCATE_ZARR (${meta.id}): provide either input_zarr or tiles_csv/input_image_path, not both."
-    }
-    if (!from_tiles && !input_zarr) {
-        error "PREALLOCATE_ZARR (${meta.id}): provide either input_zarr or tiles_csv/input_image_path."
+    if (!input_zarr) {
+    error "PREALLOCATE_ZARR (${meta.id}): input_zarr (the original OME-Zarr image) is required."
     }
 
     def command
     if (from_tiles) {
         command = """
-        params=\$(calculate_zarr_params.py --tiles-csv "${tiles_csv}" --input-image-path "${input_image_path}" ${zarr_format_arg})
+        params=\$(calculate_zarr_params.py --tiles-csv "${tiles_csv}" --source-zarr "${input_zarr}")
         preallocate_zarr.py \\
+            --input-zarr "${input_zarr}" \\
             --output-zarr "${output_zarr}" \\
             ${dtype_arg} \\
+            ${zarr_format_arg} \\
             ${data_type_arg} \\
+            ${num_levels_arg} \\
             \$params \\
             ${args}
         """

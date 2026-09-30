@@ -14,6 +14,9 @@ workflow ILASTIK_ZARR_PIPELINE {
     main:
     ch_versions = Channel.empty()
 
+    def repoRootDir = workflow.projectDir.getParent().getParent()
+    def noTilesCsv  = file("${repoRootDir}/assets/NO_FILE")
+
     EXTRACT_ILASTIK_CLASSES(ch_project)
     ch_versions = ch_versions.mix(EXTRACT_ILASTIK_CLASSES.out.versions)
 
@@ -27,13 +30,21 @@ workflow ILASTIK_ZARR_PIPELINE {
             prealloc_meta.num_channels   = channelInfo.num_channels
             prealloc_meta.channel_labels = channelInfo.channel_labels
             prealloc_meta.dtype          = "float32"
+            prealloc_meta.t_min = null
+            prealloc_meta.t_max = null
+            prealloc_meta.z_min = null
+            prealloc_meta.z_max = null
+            prealloc_meta.y_min = null
+            prealloc_meta.y_max = null
+            prealloc_meta.x_min = null
+            prealloc_meta.x_max = null
             tuple(prealloc_meta, raw_zarr, output_zarr)
         }
 
     ch_prealloc_unique = ch_prealloc_input
         .map { meta, raw_zarr, output_zarr -> tuple(output_zarr, meta, raw_zarr) }
         .unique { it[0] }
-        .map { output_zarr, meta, raw_zarr -> tuple(meta, raw_zarr, output_zarr) }
+        .map { output_zarr, meta, raw_zarr -> tuple(meta, raw_zarr, noTilesCsv, output_zarr) }
 
     PREALLOCATE_ZARR(ch_prealloc_unique)
     ch_versions = ch_versions.mix(PREALLOCATE_ZARR.out.versions)
@@ -41,7 +52,7 @@ workflow ILASTIK_ZARR_PIPELINE {
     ch_ilastik_ready = ilastik_input_ch
         .map { meta, raw_zarr, output_zarr -> tuple(output_zarr, meta, raw_zarr) }
         .combine(
-            PREALLOCATE_ZARR.out.empty_zarr.map { m, zarr -> tuple(zarr, true) },
+            PREALLOCATE_ZARR.out.zarr.map { m, zarr -> tuple(zarr, true) },
             by: 0
         )
         .map { output_zarr, meta, raw_zarr, ready -> tuple(meta, raw_zarr, output_zarr) }

@@ -9,9 +9,12 @@ workflow {
     if (!params.input_zarr)         error "Missing required parameter: --input_zarr"
     if (!params.outdir)             error "Missing required parameter: --outdir"
 
+    def dataset_id = params.dataset_id ?: "test_dataset"
+
     def meta = [
-        id                 : params.dataset_id ?: "test_dataset",
+        id                 : dataset_id,
         output_dir         : "${file(params.outdir)}/tracking",
+        output_zarr        : "${file(params.outdir)}/tracking/${dataset_id}_tracked.zarr",
         foreground_channel : 1,      // "cells"
         contours_channel   : null,
         raw_channel        : 0,      // brightfield

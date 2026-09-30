@@ -2,38 +2,73 @@
 
 nextflow.enable.dsl = 2
 
-include { TILECONSTRUCTOR_INPUT_PREP    } from '../../modules/local/tileconstructor_input_prep/main'
 include { TILE_CONSTRUCTOR              } from '../../modules/local/tileconstructor/main'
 include { ILASTIK_ZARR_PIPELINE         } from '../../subworkflows/local/ilastik_zarr_pipeline/main'
 
 workflow {
-    def pubdir = "${file(params.outdir)}/probabilities"
+    def pixel_class_dir = "${file(params.outdir)}/pixel_class"
 
-    config_csv_ch = TILECONSTRUCTOR_INPUT_PREP(params.input_dir, params.resolution_level)
+    def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
-    // Read parent images and metadata from the input CSV file
-    input_ch = config_csv_ch.csv
+    input_csv_ch = Channel
+        .fromPath(params.input_csv, checkIfExists: true)
+
+    input_ch = input_csv_ch
         .splitCsv(header: true)
         .map { row ->
-            def meta = [
-                id               : row.dataset_id,
-                tile_size_x      : row.tile_size_x as int,
-                tile_size_y      : row.tile_size_y as int,
-                tile_size_z      : row.tile_size_z as int,
-                tile_overlap     : row.tile_overlap as float,
-                resolution_level : row.resolution_level as int,
-                x_min            : row.x_min ? row.x_min as float : null,
-                x_max            : row.x_max ? row.x_max as float : null,
-                y_min            : row.y_min ? row.y_min as float : null,
-                y_max            : row.y_max ? row.y_max as float : null,
-                z_min            : row.z_min ? row.z_min as float : null,
-                z_max            : row.z_max ? row.z_max as float : null,
-                t_min            : row.t_min != null && row.t_min != '' ? row.t_min as int : null,
-                t_max            : row.t_max != null && row.t_max != '' ? row.t_max as int : null,
-                use_physical_units: false
+            def index = row_index.getAndIncrement()
+
+            def input_dataset = file(row.input_image_path, checkIfExists: true)
+
+            def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
+                ?: "${input_dataset.simpleName}_${index + 1}"
+
+            def tile_size_x  = Utils.normalizeOptionalText(row.tile_size_x)
+            def tile_size_y  = Utils.normalizeOptionalText(row.tile_size_y)
+            def tile_size_z  = Utils.normalizeOptionalText(row.tile_size_z)
+            def tile_overlap = Utils.normalizeOptionalText(row.tile_overlap)
+            def halo         = Utils.normalizeOptionalText(row.halo)
+
+            def resolution_level   = Utils.normalizeOptionalText(row.resolution_level)
+            def use_physical_units = Utils.normalizeOptionalText(row.use_physical_units)
+
+            def x_min = Utils.normalizeOptionalText(row.x_min)
+            def x_max = Utils.normalizeOptionalText(row.x_max)
+            def y_min = Utils.normalizeOptionalText(row.y_min)
+            def y_max = Utils.normalizeOptionalText(row.y_max)
+            def z_min = Utils.normalizeOptionalText(row.z_min)
+            def z_max = Utils.normalizeOptionalText(row.z_max)
+
+            def t_min = Utils.normalizeOptionalText(row.t_min)
+            def t_max = Utils.normalizeOptionalText(row.t_max)
+
+            def resolved_output_zarr = Utils.normalizeOptionalText(row.pixel_class_output)
+                ?: "${pixel_class_dir}/${dataset_id}_pixel_class.zarr"
+
+            def meta = row + [
+                id                 : dataset_id,
+                output_zarr        : resolved_output_zarr,
+
+                tile_size_x        : tile_size_x  ? tile_size_x  as int   : null,
+                tile_size_y        : tile_size_y  ? tile_size_y  as int   : null,
+                tile_size_z        : tile_size_z  ? tile_size_z  as int   : null,
+                tile_overlap       : tile_overlap ? tile_overlap as float : null,
+                halo               : halo ? halo as float : null,
+                resolution_level   : resolution_level ? resolution_level as int : null,
+                use_physical_units : use_physical_units ? use_physical_units.toBoolean() : false,
+
+                x_min : x_min ? x_min as float : null,
+                x_max : x_max ? x_max as float : null,
+                y_min : y_min ? y_min as float : null,
+                y_max : y_max ? y_max as float : null,
+                z_min : z_min ? z_min as float : null,
+                z_max : z_max ? z_max as float : null,
+
+                t_min : t_min ? t_min as int : null,
+                t_max : t_max ? t_max as int : null,
             ]
-            def image = file(row.input_image_path)
-            return [ meta, image ]
+
+            tuple(meta, input_dataset)
         }
 
     TILE_CONSTRUCTOR(input_ch)
@@ -41,10 +76,9 @@ workflow {
     ch_ilastik_inputs = TILE_CONSTRUCTOR.out.tiles
         .join(input_ch)
         .flatMap { meta, tiles_csv, raw_zarr ->
-            def output_zarr = "${pubdir}/${meta.id}_probabilities.zarr"
-
             tiles_csv.splitCsv(header: true).collect { row ->
                 def tile_meta = meta.clone()
+                tile_meta.resolution_level = row.resolution_level as Integer
                 tile_meta.y_min = row.y_min as Integer
                 tile_meta.y_max = row.y_max as Integer
                 tile_meta.x_min = row.x_min as Integer
@@ -53,7 +87,7 @@ workflow {
                 tile_meta.z_max = (row.z_max && row.z_max != '') ? row.z_max as Integer : null
                 // t_min/t_max unchanged per tile
 
-                return [ tile_meta, raw_zarr, output_zarr ]
+                return [ tile_meta, raw_zarr, meta.output_zarr ]
             }
         }
     ch_project = Channel.value(file(params.ilastik_project))
