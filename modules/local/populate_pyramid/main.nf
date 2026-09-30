@@ -4,10 +4,10 @@ process POPULATE_PYRAMID {
     conda "${moduleDir}/environment.yml"
 
     input:
-    tuple val(meta), val(output_zarr), val(downsample_method)
+    tuple val(meta), path(output_zarr), val(downsample_method)
 
     output:
-    tuple val(meta), val(output_zarr),  emit: zarr
+    tuple val(meta), path(output_zarr), emit: zarr
     path "versions.yml",                emit: versions
 
     script:
