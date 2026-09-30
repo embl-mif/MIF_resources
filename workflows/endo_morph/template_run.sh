@@ -24,9 +24,13 @@ export WDIR="/PATH/TO/WORK/DIRECTORY" # <---------------- MODIFY TO YOUR DESIRED
 export CSV_PATH="/PATH/TO/batch.csv" # <----------------- MODIFY
 export MDL="/g/mif-hd/shared/cellpose_models/cpsam" # <--- MODIFY IF USING A DIFFERENT MODEL
 
+# The merged cells/summary CSVs are saved next to the input csv.
+export OUT_DIR="$(dirname "$CSV_PATH")/merged" # <--- MODIFY IF DESIRED
+
 nextflow run "$NF_PATH" \
     -lib "$LIB_PATH" \
     -work-dir "$WDIR" \
     --input_csv "$CSV_PATH" \
+    --merged_output_dir "$OUT_DIR" \
     --cellpose_model_path "$MDL" \
     -resume

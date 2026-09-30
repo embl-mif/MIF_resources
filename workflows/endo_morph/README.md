@@ -12,13 +12,17 @@ the standalone `endo_morph` scripts
    border, compute three nested edge-distance bands measured inward from the
    cell edge (junction, cortical actin, transversal actin), and write them as
    a label OME-Zarr. Cells touching the image border are cut by the field of
-   view and are never measured (excluded from the bands entirely).
+   view and are never measured (excluded from the bands entirely). The same
+   zarr also holds the cell-free ("empty") area of the image, estimated from
+   the MIP fluorescence signal alone -- never from the labels, since Cellpose
+   can both miss cells and over-reach into cell-free pixels -- and the
+   not-imaged area.
 9. Against those bands, measure per-cell shape morphology (area, perimeter,
    aspect ratio, orientation) and V-cadherin/myosin/actin mean intensity in
-   each band (and over the whole cell), and estimate the cell-free ("empty")
-   area of the image from the fluorescence signal alone -- never from the
-   labels, since Cellpose can both miss cells and over-reach into cell-free
-   pixels.
+   each band (and over the whole cell), and add the image-level empty-area
+   statistics from stage 8 to the per-image summary.
+10. Merge the per-dataset cells and summary CSVs of all rows into one cells
+   CSV and one summary CSV, saved next to the launch `.sh` script.
 
 Both new stages always run at the same pyramid level as the final Cellpose
 segmentation (`resolution_level`/`meta.resolution_level`), for the same
@@ -109,7 +113,7 @@ of each marker is computed in the regions listed in the band table above:
 marker if it has no pixel). A cell counts as measured if stage 8 painted any
 band pixel for it.
 
-### Empty area -- stage 9
+### Empty area -- stage 8
 
 The empty area is decided by the fluorescence signal alone, never by the
 labels. Cellpose is not perfect in either direction: it can miss cells
@@ -208,14 +212,20 @@ outputs you want to keep.
 | `endomorph_border_margin` | Cells with any pixel within this many pixels of the image border are considered cut by the field of view and are not measured. Defaults to `10`. |
 | `endomorph_timepoint` | Time index to analyse, for both stages 8 and 9. Defaults to `0` (always `0` for MIPs). |
 
-Bands are written to `endomorph_regions_output` as a single-level OME-Zarr
-label image: value `0` = not in any band (including cells excluded for
-touching the border), `1` = R1, `2` = R2 outside R1, `3` = R3 outside R2.
-`PYMIF_ENDOMORPH_REGIONS` writes only this zarr -- no CSV. Downstream,
-`PYMIF_ENDOMORPH_FEATURES` treats a cell as measured if it has any painted
-band pixel; a cell with none was excluded here for touching the border.
+Bands and empty area are written to `endomorph_regions_output` as a
+single-level OME-Zarr label image, at the resolution of the MIP: value `0` =
+none of the below (including cells excluded for touching the border), `1` =
+R1, `2` = R2 outside R1, `3` = R3 outside R2, `4` = empty area, `5` = not
+imaged. Bands keep priority: `4` and `5` are only painted on pixels without a
+band, so an empty region overlapping a cell mask shows the band there (the
+percentages in the summary, e.g. `empty_in_cells_area_pct`, are computed from
+the full empty mask). `PYMIF_ENDOMORPH_REGIONS` also hands the image-level
+empty-area statistics to `PYMIF_ENDOMORPH_FEATURES` in a JSON file in its work
+directory. Downstream, `PYMIF_ENDOMORPH_FEATURES` treats a cell as measured if
+it has any painted band pixel; a cell with none was excluded here for touching
+the border.
 
-### Feature columns (stage 9, `PYMIF_ENDOMORPH_FEATURES`)
+### Channel and empty-area columns (used by stage 8; the channel columns also by stage 9)
 
 | CSV column | Purpose |
 | --- | --- |
@@ -229,8 +239,8 @@ band pixel; a cell with none was excluded here for touching the border.
 See [Algorithm](#algorithm) for what each of these settings does. The logic is
 ported unchanged from the standalone `endo_morph` scripts
 (`Z:\people\gritti\projects\Candelas_Adrian\endo_morph`), only split across two
-Nextflow processes and stripped of the QC (`--save-regions` histogram/plot)
-outputs.
+Nextflow processes and stripped of the QC histogram plot. The empty-area
+labels are part of the regions zarr (the equivalent of `--save-regions`).
 
 ### Example
 
@@ -244,8 +254,10 @@ sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,sample_02.ome.zarr,,2,2
 
 Same as
 [conv_mip_cpsam_filt_mask_cpsam](../conv_mip_cpsam_filt_mask_cpsam/README.md#parameters)
--- no new workflow-level parameters, every new option is a per-row CSV
-column above.
+-- plus one new workflow-level parameter, `--merged_output_dir` (absolute path;
+defaults to the launch directory), where the merged CSVs are written.
+`template_run.sh` sets it to the directory `sbatch` was run from, i.e. where
+the script lives. Every other new option is a per-row CSV column above.
 
 ## Outputs
 
@@ -254,9 +266,20 @@ For each dataset (`<id>` = `dataset_id`), at the path given in the matching
 
 | File | Content |
 | --- | --- |
-| `<id>_endomorph_regions.ome.zarr` | Region-bands label image (stage 8; `0`/`1`/`2`/`3`, see above) |
+| `<id>_endomorph_regions.ome.zarr` | Region-bands + empty-area label image (stage 8; `0`-`5`, see above) |
 | `<id>_endomorph_cells.csv` | One row per measured cell: `dataset_id`, `label`, centroid, area, perimeter, axis lengths, `aspect_ratio`, `orientation_deg`, `R1_area_px`/`R2_area_px`/`R3_area_px`, and per-band marker means `R1_vcad_mean`, `R2_myosin_mean`, `R2_actin_mean`, `R3_myosin_mean`, `R3_actin_mean`, `cell_vcad_mean`, `cell_myosin_mean`, `cell_actin_mean` |
 | `<id>_endomorph_summary.csv` | One row for the image: `dataset_id`, `n_cells` (all labelled cells, including those touching the border), `n_cells_analysed` (rows of the cells CSV), `image_area`, `imaged_area`, the empty-area statistics (`empty_area`, `empty_area_pct`, `unlabelled_area_pct`, `undetected_cell_area_pct`, `empty_in_cells_area_pct`, `empty_threshold`, `empty_seed_area_pct`, `empty_background_ratio`, `empty_channels_used`, `empty_channel_levels`), `mean_area`/`mean_aspect_ratio`/`mean_perimeter` over the measured cells, pixel size and unit, the empty-area settings used, and the `channels` assignment (see [Algorithm](#algorithm)) |
+
+Once all datasets are done, two merged files are written to
+`--merged_output_dir` (next to the launch `.sh` script):
+
+| File | Content |
+| --- | --- |
+| `endomorph_cells_merged.csv` | All `<id>_endomorph_cells.csv` rows, told apart by `dataset_id` |
+| `endomorph_summary_merged.csv` | All `<id>_endomorph_summary.csv` rows, one per dataset |
+
+They are overwritten on every run (a `-resume` that reuses cached results
+rewrites them from the same inputs).
 
 ## Running the workflow
 

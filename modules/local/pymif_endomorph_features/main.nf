@@ -4,7 +4,7 @@ process PYMIF_ENDOMORPH_FEATURES {
     container 'ghcr.io/grinic/pymif:2026.9.1'
 
     input:
-    tuple val(meta), path(intensity_zarr), path(labels_zarr), path(regions_zarr)
+    tuple val(meta), path(intensity_zarr), path(labels_zarr), path(regions_zarr), path(empty_stats_json)
 
     output:
     tuple val(meta), path(output_csv_link), path(output_summary_csv_link), emit: csv
@@ -29,11 +29,6 @@ process PYMIF_ENDOMORPH_FEATURES {
     def myosinArg = meta.endomorph_myosin_channel ? "--myosin-channel ${shellQuote(meta.endomorph_myosin_channel)}" : ""
     def actinArg = meta.endomorph_actin_channel ? "--actin-channel ${shellQuote(meta.endomorph_actin_channel)}" : ""
     def nucleiArg = meta.endomorph_nuclei_channel ? "--nuclei-channel ${shellQuote(meta.endomorph_nuclei_channel)}" : ""
-    def emptyChannelsArg = meta.endomorph_empty_channels ? "--empty-channels ${shellQuote(meta.endomorph_empty_channels)}" : ""
-    def emptySmoothingArg = meta.endomorph_empty_smoothing != null ? "--empty-smoothing ${meta.endomorph_empty_smoothing}" : ""
-    def emptyMinAreaArg = meta.endomorph_empty_min_area != null ? "--empty-min-area ${meta.endomorph_empty_min_area}" : ""
-    def emptySeedPercentileArg = meta.endomorph_empty_seed_percentile != null ? "--empty-seed-percentile ${meta.endomorph_empty_seed_percentile}" : ""
-    def emptyMinContrastArg = meta.endomorph_empty_min_contrast != null ? "--empty-min-contrast ${meta.endomorph_empty_min_contrast}" : ""
 
     """
     if [ -e ${shellQuote(output_csv)} ] && [ -e ${shellQuote(output_summary_csv)} ]; then
@@ -46,6 +41,7 @@ process PYMIF_ENDOMORPH_FEATURES {
             --intensity "${intensity_zarr}" \
             --labels "${labels_zarr}" \
             --regions "${regions_zarr}" \
+            --empty-stats "${empty_stats_json}" \
             --output "${output_csv}" \
             --output-summary "${output_summary_csv}" \
             --dataset-id ${shellQuote(meta.id)} \
@@ -55,12 +51,7 @@ process PYMIF_ENDOMORPH_FEATURES {
             ${vcadArg} \
             ${myosinArg} \
             ${actinArg} \
-            ${nucleiArg} \
-            ${emptyChannelsArg} \
-            ${emptySmoothingArg} \
-            ${emptyMinAreaArg} \
-            ${emptySeedPercentileArg} \
-            ${emptyMinContrastArg}
+            ${nucleiArg}
     fi
 
     if [ ! -e ${shellQuote(output_csv)} ]; then

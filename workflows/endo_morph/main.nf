@@ -11,6 +11,7 @@ include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_SEED  } from '../../modules/local/ce
 include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_FINAL } from '../../modules/local/cellpose_sam_zarr_mif/main'
 include { PYMIF_ENDOMORPH_REGIONS       } from '../../modules/local/pymif_endomorph_regions/main'
 include { PYMIF_ENDOMORPH_FEATURES      } from '../../modules/local/pymif_endomorph_features/main'
+include { PYMIF_ENDOMORPH_MERGE         } from '../../modules/local/pymif_endomorph_merge/main'
 
 workflow {
 
@@ -158,9 +159,10 @@ workflow {
                 // PYMIF_ENDOMORPH_REGIONS: for every final-Cellpose-labelled
                 // cell that doesn't touch the image border, computes nested
                 // R1/R2/R3 edge-distance bands (inward from the cell edge)
-                // as a label OME-Zarr. Outputs only the bands: morphology
-                // and intensities are computed downstream by
-                // PYMIF_ENDOMORPH_FEATURES.
+                // as a label OME-Zarr, and estimates the cell-free ("empty")
+                // area from the MIP fluorescence signal (labels 4=empty,
+                // 5=not imaged). Morphology and intensities are computed
+                // downstream by PYMIF_ENDOMORPH_FEATURES.
                 endomorph_regions_output_name     : resolved_endomorph_regions_output,
                 endomorph_ring_depths             : Utils.normalizeOptionalText(row.endomorph_ring_depths) ?: '6 9 24',
                 endomorph_border_margin           : endomorph_border_margin_value ? endomorph_border_margin_value as int : 10,
@@ -297,19 +299,24 @@ workflow {
     /*
      * For every final-Cellpose-labelled cell that doesn't touch the image
      * border, computes nested R1/R2/R3 edge-distance bands (inward from the
-     * cell edge) as a label OME-Zarr (0/1/2/3). A cell with no painted band
-     * pixel was excluded for touching the image border.
+     * cell edge) plus the empty (4) and not-imaged (5) areas of the MIP, as a
+     * label OME-Zarr (0/1/2/3/4/5). A cell with no painted band pixel was
+     * excluded for touching the image border.
      *
      * Expected output:
-     * tuple(meta, regions_zarr)
+     * tuple(meta, regions_zarr, empty_stats_json)
      */
-    PYMIF_ENDOMORPH_REGIONS(CELLPOSE_FINAL.out.labels)
+    ch_regions_inputs = CELLPOSE_FINAL.out.labels
+        .map { meta, labels -> tuple(meta.id, meta, labels) }
+        .join(PYMIF_MIP.out.zarr.map { meta, mip -> tuple(meta.id, mip) })
+        .map { id, meta, labels, mip -> tuple(meta, labels, mip) }
+
+    PYMIF_ENDOMORPH_REGIONS(ch_regions_inputs)
 
     /*
      * Measures per-cell morphology and V-cadherin/myosin/actin band
-     * intensities against the MIP and the bands above, and estimates the
-     * cell-free ("empty") area of the image from the fluorescence signal
-     * alone.
+     * intensities against the MIP and the bands above, and adds the
+     * image-level empty-area statistics to the per-image summary.
      *
      * Expected output:
      * tuple(meta, cells_csv, summary_csv)
@@ -317,9 +324,26 @@ workflow {
     ch_endomorph_inputs = PYMIF_MIP.out.zarr
         .map { meta, mip -> tuple(meta.id, meta, mip) }
         .join(CELLPOSE_FINAL.out.labels.map { meta, labels -> tuple(meta.id, labels) })
-        .join(PYMIF_ENDOMORPH_REGIONS.out.zarr.map { meta, regions -> tuple(meta.id, regions) })
-        .map { id, meta, mip, labels, regions -> tuple(meta, mip, labels, regions) }
+        .join(PYMIF_ENDOMORPH_REGIONS.out.zarr.map { meta, regions, stats -> tuple(meta.id, regions, stats) })
+        .map { id, meta, mip, labels, regions, stats -> tuple(meta, mip, labels, regions, stats) }
 
     PYMIF_ENDOMORPH_FEATURES(ch_endomorph_inputs)
+
+    /*
+     * Merges the per-dataset CSVs into one per-cell CSV and one per-image
+     * summary CSV, written to params.merged_output_dir (the directory of the
+     * launch .sh script when started through template_run.sh).
+     */
+    def merged_dir = (params.merged_output_dir ?: workflow.launchDir).toString()
+    if (!new File(merged_dir).isAbsolute()) {
+        throw new IllegalArgumentException("--merged_output_dir must be an absolute path: got '${merged_dir}'")
+    }
+
+    PYMIF_ENDOMORPH_MERGE(
+        PYMIF_ENDOMORPH_FEATURES.out.csv.map { meta, cells, summary -> cells }.collect(),
+        PYMIF_ENDOMORPH_FEATURES.out.csv.map { meta, cells, summary -> summary }.collect(),
+        "${merged_dir}/endomorph_cells_merged.csv",
+        "${merged_dir}/endomorph_summary_merged.csv"
+    )
 
 }

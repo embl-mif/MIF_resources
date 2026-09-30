@@ -2,10 +2,10 @@
 
 """
 Measure per-cell morphology and V-cadherin/myosin/actin band intensities
-against the R1/R2/R3 edge-distance bands written by
-create_endomorph_regions.py, and estimate the cell-free ("empty") area of the
-image from the fluorescence signal alone (never from the labels, since
-Cellpose can both miss cells and over-reach into cell-free pixels).
+against the R1/R2/R3 edge-distance bands of the regions OME-Zarr written by
+create_endomorph_regions.py (which also holds the empty and not-imaged areas,
+as labels 4 and 5, and writes the image-level empty-area statistics that this
+script adds to the per-image summary).
 
 A cell is measured if create_endomorph_regions.py painted any band pixel for
 it; a cell with no painted pixel was excluded there for touching the image
@@ -15,23 +15,19 @@ Writes one CSV of per-cell measurements (morphology + band intensities) and
 one CSV of per-image summary metrics (cell counts and empty-area
 statistics).
 
-Stripped down from endo_morph's channels.py/empty_area.py/features.py/
-run_endo_morph.py (Z:\\people\\gritti\\projects\\Candelas_Adrian\\endo_morph).
+Stripped down from endo_morph's channels.py/features.py/run_endo_morph.py
+(Z:\\people\\gritti\\projects\\Candelas_Adrian\\endo_morph).
 """
 
 import argparse
 import json
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pymif.microscope_manager as mm
-from scipy import ndimage as ndi
 from skimage.measure import regionprops
-
-EDGE_THRESHOLD = 0.5  # cell signal is normalized to 0 = background, 1 = cell level
 
 # Keywords are matched case-insensitively against the intensity channel_names.
 DEFAULT_KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -54,13 +50,15 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "Measure per-cell morphology and band intensities against the "
-            "R1/R2/R3 bands of --regions, and the fluorescence-signal empty "
-            "area of an image, and write both as CSVs."
+            "R1/R2/R3 bands of --regions, and add the empty-area statistics "
+            "of --empty-stats to the per-image summary; write both as CSVs."
         )
     )
     parser.add_argument("--intensity", required=True, type=Path)
     parser.add_argument("--labels", required=True, type=Path)
     parser.add_argument("--regions", required=True, type=Path)
+    parser.add_argument("--empty-stats", required=True, type=Path,
+                        help="JSON with the image-level empty-area statistics written by create_endomorph_regions.py.")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--output-summary", required=True, type=Path)
     parser.add_argument("--intensity-resolution-level", type=int, default=0)
@@ -71,21 +69,6 @@ def parse_args():
     for marker, keywords in DEFAULT_KEYWORDS.items():
         ch.add_argument(f"--{marker}-channel", default=None,
                         help=f"Keywords used if omitted: {', '.join(keywords)}")
-
-    em = parser.add_argument_group("empty area")
-    em.add_argument("--empty-channels", type=str, default="vcad myosin actin",
-                    help="Markers whose signal means cells are present, separated by "
-                         "comma/semicolon/whitespace. The nuclei stain is excluded by default.")
-    em.add_argument("--empty-smoothing", type=float, default=2.0, metavar="UM",
-                    help="Gaussian smoothing of the signal before thresholding, in physical units.")
-    em.add_argument("--empty-min-area", type=float, default=25.0, metavar="UM2",
-                    help="Empty regions smaller than this (physical units^2) are ignored.")
-    em.add_argument("--empty-seed-percentile", type=float, default=1.0, metavar="PCT",
-                    help="An empty region starts where a pixel is darker than this percentile "
-                         "of the cell pixels in every channel at once.")
-    em.add_argument("--empty-min-contrast", type=float, default=0.25, metavar="FRACTION",
-                    help="A channel contributes to the cell signal only if "
-                         "(cell - background) / cell reaches this.")
 
     parser.add_argument("--dataset-id", type=str, default=None)
     return parser.parse_args()
@@ -201,119 +184,6 @@ def resolve_channels(channel_names: list[str], overrides: dict[str, str | None])
     return mapping
 
 
-# --- empty area ----------------------------------------------------------------
-
-
-@dataclass
-class ChannelLevels:
-    channel: int
-    cell: float
-    background: float = np.nan
-    used: bool = True
-
-    @property
-    def contrast(self) -> float:
-        if not self.cell > 0 or not np.isfinite(self.background):
-            return 0.0
-        return (self.cell - self.background) / self.cell
-
-    @property
-    def background_ratio(self) -> float:
-        return self.background / self.cell if self.cell > 0 else np.inf
-
-
-@dataclass
-class EmptyArea:
-    signal: np.ndarray
-    imaged: np.ndarray
-    empty: np.ndarray
-    seeds: np.ndarray
-    threshold: float
-    levels: list[ChannelLevels] = field(default_factory=list)
-
-    @property
-    def used(self) -> list[int]:
-        return [lv.channel for lv in self.levels if lv.used]
-
-    @property
-    def background_ratio(self) -> float:
-        ratios = [lv.background_ratio for lv in self.levels if lv.used]
-        return min(ratios) if ratios else np.inf
-
-
-def remove_small_regions(mask: np.ndarray, min_px: int) -> np.ndarray:
-    regions, n = ndi.label(mask)
-    if n == 0:
-        return mask
-    keep = np.bincount(regions.ravel()) >= min_px
-    keep[0] = False
-    return keep[regions]
-
-
-def smooth(values: np.ndarray, weight: np.ndarray, sigma_px: float) -> np.ndarray:
-    """Gaussian smoothing that ignores pixels outside `weight` (normalized convolution)."""
-    num = ndi.gaussian_filter(values * weight, sigma_px)
-    den = ndi.gaussian_filter(weight, sigma_px)
-    return num / np.maximum(den, 1e-6)
-
-
-def grow_from_seeds(signal: np.ndarray, imaged: np.ndarray, seeds: np.ndarray,
-                    edge_threshold: float) -> np.ndarray:
-    regions, n = ndi.label((signal < edge_threshold) & imaged)
-    if n == 0:
-        return np.zeros_like(imaged)
-    keep = np.zeros(n + 1, bool)
-    keep[np.unique(regions[seeds])] = True
-    keep[0] = False
-    return keep[regions]
-
-
-def estimate_empty_area(
-    image: np.ndarray, labels: np.ndarray, channels: list[int], sigma_px: float,
-    min_area_px: float, seed_percentile: float, min_contrast: float,
-) -> EmptyArea:
-    """See module docstring. `image` is (C, Y, X), `labels` (Y, X)."""
-    min_area_px = max(int(round(min_area_px)), 1)
-
-    imaged = ~remove_small_regions(~np.any(image != 0, axis=0), min_area_px)
-    weight = imaged.astype(np.float32)
-
-    labelled = labels > 0
-    interior = (ndi.distance_transform_edt(labelled) > 2 * sigma_px) & imaged
-    if not interior.any():
-        interior = labelled & imaged
-    reference = interior if interior.any() else imaged
-
-    smoothed = {c: smooth(image[c].astype(np.float32), weight, sigma_px) for c in channels}
-    levels = [ChannelLevels(c, float(np.median(smoothed[c][reference]))) for c in channels]
-
-    seeds = imaged.copy()
-    for lv in levels:
-        seeds &= smoothed[lv.channel] < np.percentile(smoothed[lv.channel][reference], seed_percentile)
-    seeds = remove_small_regions(seeds, min_area_px)
-
-    signal = np.zeros(image.shape[1:], np.float32)
-    result = EmptyArea(signal, imaged, np.zeros_like(imaged), seeds, 0.0, levels)
-    if not seeds.any():
-        return result
-
-    for lv in levels:
-        lv.background = float(np.median(smoothed[lv.channel][seeds]))
-        lv.used = lv.contrast >= min_contrast
-        if not lv.used:
-            continue
-        normalized = np.clip(
-            (image[lv.channel] - lv.background) / (lv.cell - lv.background), 0, 1
-        ).astype(np.float32)
-        np.maximum(signal, smooth(normalized, weight, sigma_px), out=signal)
-
-    if result.used:
-        result.threshold = EDGE_THRESHOLD
-        result.empty = remove_small_regions(
-            grow_from_seeds(signal, imaged, seeds, EDGE_THRESHOLD), min_area_px)
-    return result
-
-
 # --- per-cell morphology + band intensities, and per-image summary --------------
 
 
@@ -393,33 +263,14 @@ def measure_cells(
     return pd.DataFrame(rows, columns=cells_columns(measurements))
 
 
-def summarize_image(labels: np.ndarray, n_cells_analysed: int, pixel_size_yx: tuple[float, float],
-                    empty: EmptyArea) -> dict:
-    pixel_area = pixel_size_yx[0] * pixel_size_yx[1]
-    imaged = int(empty.imaged.sum())
-    n_empty = int(empty.empty.sum())
-    labelled = labels > 0
-    unlabelled = int((~labelled & empty.imaged).sum())
-    empty_in_cells = int((empty.empty & labelled).sum())
-    pct = (lambda n: 100.0 * n / imaged) if imaged else (lambda n: np.nan)
+def summarize_image(labels: np.ndarray, n_cells_analysed: int, empty_stats: dict) -> dict:
+    """Cell counts plus the image-level empty-area statistics computed by
+    create_endomorph_regions.py (they need the full empty mask, which the regions
+    zarr only holds where no band was painted)."""
     return {
         "n_cells": len(np.unique(labels[labels > 0])),
         "n_cells_analysed": n_cells_analysed,
-        "image_area": labels.size * pixel_area,
-        "imaged_area": imaged * pixel_area,
-        "empty_area": n_empty * pixel_area,
-        "empty_area_pct": pct(n_empty),
-        "unlabelled_area_pct": pct(unlabelled),
-        "undetected_cell_area_pct": pct(unlabelled - (n_empty - empty_in_cells)),
-        "empty_in_cells_area_pct": pct(empty_in_cells),
-        "empty_threshold": empty.threshold,
-        "empty_background_ratio": empty.background_ratio,
-        "empty_seed_area_pct": pct(int(empty.seeds.sum())),
-        "empty_channel_levels": json.dumps({
-            lv.channel: {"background": round(lv.background, 2), "cell": round(lv.cell, 2), "used": lv.used}
-            for lv in empty.levels
-        }),
-        "empty_channels_used": " ".join(str(c) for c in empty.used),
+        **empty_stats,
     }
 
 
@@ -482,17 +333,9 @@ def main():
         cells.insert(0, "dataset_id", args.dataset_id)
     cells.to_csv(args.output, index=False)
 
-    empty_channels = parse_token_list(args.empty_channels)
-    unknown = [m for m in empty_channels if m not in DEFAULT_KEYWORDS]
-    if unknown:
-        raise ValueError(f"--empty-channels: unknown marker(s) {unknown}, expected any of {list(DEFAULT_KEYWORDS)}")
     py, px = pixel_size_yx
-    empty = estimate_empty_area(
-        image, labels, [channel_map[m] for m in empty_channels],
-        sigma_px=args.empty_smoothing / px, min_area_px=args.empty_min_area / (py * px),
-        seed_percentile=args.empty_seed_percentile, min_contrast=args.empty_min_contrast,
-    )
-    summary = summarize_image(labels, len(cells), pixel_size_yx, empty)
+    empty_stats = json.loads(args.empty_stats.read_text())
+    summary = summarize_image(labels, len(cells), empty_stats)
     for col in ("area", "aspect_ratio", "perimeter"):
         summary[f"mean_{col}"] = cells[col].mean() if col in cells.columns and len(cells) else np.nan
 
@@ -502,11 +345,6 @@ def main():
         "pixel_size_y": py,
         "pixel_size_x": px,
         "unit": unit,
-        "empty_channels": " ".join(empty_channels),
-        "empty_smoothing_um": args.empty_smoothing,
-        "empty_min_area_um2": args.empty_min_area,
-        "empty_seed_percentile": args.empty_seed_percentile,
-        "empty_min_contrast": args.empty_min_contrast,
         "channels": json.dumps({m: channel_names[i] for m, i in channel_map.items()}),
     }
     pd.DataFrame([summary]).to_csv(args.output_summary, index=False)
