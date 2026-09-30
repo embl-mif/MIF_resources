@@ -5,24 +5,48 @@ process RUN_ULTRACK {
     container "docker.io/royerlab/ultrack:0.6.1-cuda12.4"
 
     input:
-    tuple val(meta), val(labels_zarr), val(foreground_zarr), val(contours_zarr), val(raw_zarr), val(output_tracked_zarr)
+    tuple val(meta),
+          path(local_labels_zarr),     val(labels_zarr_uri),
+          path(local_foreground_zarr), val(foreground_zarr_uri),
+          path(local_contours_zarr),   val(contours_zarr_uri),
+          path(local_raw_zarr),        val(raw_zarr_uri),
+          val(output_tracked_zarr)
     path  config_toml
 
     output:
-    tuple val(meta), val(output_tracked_zarr),  emit: tracked_zarr
-    tuple val(meta), path(output_tracks_csv),   emit: tracks
-    tuple val(meta), path(output_graph),        emit: graph
-    path "versions.yml",                        emit: versions
+    tuple val(meta), path(output_tracked_zarr_link), emit: tracked_zarr
+    tuple val(meta), path(output_tracks_csv),         emit: tracks
+    tuple val(meta), path(output_graph),              emit: graph
+    path "versions.yml",                              emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
     def args = task.ext.args ?: ''
-    output_tracks_csv   = "${meta.id}_tracks.csv"
-    output_graph          = "${meta.id}_graph.npy"
+    output_tracks_csv = "${meta.id}_tracks.csv"
+    output_graph      = "${meta.id}_graph.npy"
+    // A `path` output must live in the work dir: an absolute output is exposed there as a
+    // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
+    // NOTE: no `def` -- a def-scoped variable is invisible to the output: block's own
+    // evaluation, so path(output_tracked_zarr_link) would look for a literal file named
+    // "output_tracked_zarr_link" instead of resolving to this value.
+    output_tracked_zarr_link = new File(output_tracked_zarr.toString()).name
+
     def working_dir = "${meta.id}_ultrack_db"
     def n_threads = task.cpus ?: 1
+
+    // Each of labels/foreground/contours/raw is independently optional -- a
+    // caller that doesn't have one passes the NO_FILE sentinel as its local
+    // path and null/'' as its uri (same convention as CELLPOSE_SAM_ZARR_MIF's
+    // model input). Resolving back to plain labels_zarr/foreground_zarr/etc.
+    // here keeps every arg line below completely unchanged.
+    def resolveZarr = { localPath, uri -> uri ?: (localPath.name != 'NO_FILE' ? localPath.toString() : null) }
+    def labels_zarr     = resolveZarr(local_labels_zarr, labels_zarr_uri)
+    def foreground_zarr = resolveZarr(local_foreground_zarr, foreground_zarr_uri)
+    def contours_zarr   = resolveZarr(local_contours_zarr, contours_zarr_uri)
+    def raw_zarr         = resolveZarr(local_raw_zarr, raw_zarr_uri)
+
     def t_min_arg = meta.t_min != null ? "--t-min ${meta.t_min}" : ""
     def t_max_arg = meta.t_max != null ? "--t-max ${meta.t_max}" : ""
     def config_arg     = config_toml ? "--config-toml ${config_toml}" : ""
@@ -71,6 +95,8 @@ process RUN_ULTRACK {
         ${scale_y_arg} \\
         ${scale_x_arg} \\
         ${args}
+
+    ${Utils.shellLinkOutput(output_tracked_zarr)}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
