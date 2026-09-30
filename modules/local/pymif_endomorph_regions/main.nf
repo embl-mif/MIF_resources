@@ -7,16 +7,17 @@ process PYMIF_ENDOMORPH_REGIONS {
     tuple val(meta), path(labels_zarr), path(intensity_zarr)
 
     output:
-    tuple val(meta), path(output_zarr_link), path(empty_stats_json), emit: zarr
-    path "versions.yml"                                             , emit: versions
+    tuple val(meta), path(output_zarr_link), emit: zarr
+    tuple val(meta), path(empty_qc_json)   , emit: qc
+    path "versions.yml"                    , emit: versions
 
     script:
     output_zarr = meta.endomorph_regions_output_name ?: "${meta.id}_endomorph_regions.ome.zarr"
     // A `path` output must live in the work dir: an absolute output is exposed there as a
     // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
     output_zarr_link = new File(output_zarr.toString()).name
-    // Image-level empty-area statistics, handed to PYMIF_ENDOMORPH_FEATURES. Always in the work dir.
-    empty_stats_json = "${meta.id}_endomorph_empty_stats.json"
+    // QC diagnostics of the empty-area estimation. Always in the work dir.
+    empty_qc_json = "${meta.id}_endomorph_empty_qc.json"
 
     def shellQuote = { value ->
         "'${value.toString().replace("'", "'\"'\"'")}'"
@@ -27,10 +28,6 @@ process PYMIF_ENDOMORPH_REGIONS {
     def timepointArg = meta.endomorph_timepoint != null ? "--timepoint ${meta.endomorph_timepoint}" : ""
     def ringDepthsArg = meta.endomorph_ring_depths ? "--ring-depths ${shellQuote(meta.endomorph_ring_depths)}" : ""
     def borderMarginArg = meta.endomorph_border_margin != null ? "--border-margin ${meta.endomorph_border_margin}" : ""
-    def vcadArg = meta.endomorph_vcad_channel ? "--vcad-channel ${shellQuote(meta.endomorph_vcad_channel)}" : ""
-    def myosinArg = meta.endomorph_myosin_channel ? "--myosin-channel ${shellQuote(meta.endomorph_myosin_channel)}" : ""
-    def actinArg = meta.endomorph_actin_channel ? "--actin-channel ${shellQuote(meta.endomorph_actin_channel)}" : ""
-    def nucleiArg = meta.endomorph_nuclei_channel ? "--nuclei-channel ${shellQuote(meta.endomorph_nuclei_channel)}" : ""
     def emptyChannelsArg = meta.endomorph_empty_channels ? "--empty-channels ${shellQuote(meta.endomorph_empty_channels)}" : ""
     def emptySmoothingArg = meta.endomorph_empty_smoothing != null ? "--empty-smoothing ${meta.endomorph_empty_smoothing}" : ""
     def emptyMinAreaArg = meta.endomorph_empty_min_area != null ? "--empty-min-area ${meta.endomorph_empty_min_area}" : ""
@@ -44,17 +41,13 @@ process PYMIF_ENDOMORPH_REGIONS {
         --labels "${labels_zarr}" \
         --intensity "${intensity_zarr}" \
         --output "${output_zarr}" \
-        --output-empty-stats "${empty_stats_json}" \
+        --output-empty-qc "${empty_qc_json}" \
+        ${emptyChannelsArg} \
         ${levelArg} \
         ${intensityLevelArg} \
         ${timepointArg} \
         ${ringDepthsArg} \
         ${borderMarginArg} \
-        ${vcadArg} \
-        ${myosinArg} \
-        ${actinArg} \
-        ${nucleiArg} \
-        ${emptyChannelsArg} \
         ${emptySmoothingArg} \
         ${emptyMinAreaArg} \
         ${emptySeedPercentileArg} \
@@ -65,8 +58,8 @@ process PYMIF_ENDOMORPH_REGIONS {
         exit 1
     fi
 
-    if [ ! -e ${shellQuote(empty_stats_json)} ]; then
-        echo "ERROR: expected empty-area stats not found: ${empty_stats_json}" >&2
+    if [ ! -e ${shellQuote(empty_qc_json)} ]; then
+        echo "ERROR: expected empty-area QC file not found: ${empty_qc_json}" >&2
         exit 1
     fi
 

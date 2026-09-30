@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 
 """
-Measure per-cell morphology and V-cadherin/myosin/actin band intensities
-against the R1/R2/R3 edge-distance bands of the regions OME-Zarr written by
-create_endomorph_regions.py (which also holds the empty and not-imaged areas,
-as labels 4 and 5, and writes the image-level empty-area statistics that this
-script adds to the per-image summary).
+Measure per-cell morphology and per-channel band intensities against the
+regions OME-Zarr written by create_endomorph_regions.py, and summarize the
+image, including its empty area.
 
-A cell is measured if create_endomorph_regions.py painted any band pixel for
-it; a cell with no painted pixel was excluded there for touching the image
-border.
+With N ring depths (--ring-depths, only the count is used here), the regions
+zarr holds bands 1..N (R1..RN, nested: RK = pixels with value 1..K), N+1 =
+empty and N+2 = not imaged. A cell is measured if create_endomorph_regions.py
+painted any band pixel for it; a cell with no painted band pixel was excluded
+there for touching the image border.
 
-Writes one CSV of per-cell measurements (morphology + band intensities) and
-one CSV of per-image summary metrics (cell counts and empty-area
-statistics).
+Writes one CSV of per-cell measurements (morphology + the mean of every
+--measure-channels channel in each of R1..RN and in the whole cell) and one
+CSV of per-image summary metrics (cell counts and empty-area statistics).
 
-Stripped down from endo_morph's channels.py/features.py/run_endo_morph.py
+Stripped down from endo_morph's features.py/run_endo_morph.py
 (Z:\\people\\gritti\\projects\\Candelas_Adrian\\endo_morph).
 """
 
@@ -29,47 +29,30 @@ import pandas as pd
 import pymif.microscope_manager as mm
 from skimage.measure import regionprops
 
-# Keywords are matched case-insensitively against the intensity channel_names.
-DEFAULT_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "vcad": ("488", "cad"),
-    "myosin": ("561", "568", "myo"),
-    "actin": ("647", "actin"),
-    "nuclei": ("hoechst", "dapi", "405"),
-}
-
-# Which markers are averaged in which region.
-DEFAULT_MEASUREMENTS: dict[str, tuple[str, ...]] = {
-    "R1": ("vcad",),
-    "R2": ("myosin", "actin"),
-    "R3": ("myosin", "actin"),
-    "cell": ("vcad", "myosin", "actin"),
-}
-
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "Measure per-cell morphology and band intensities against the "
-            "R1/R2/R3 bands of --regions, and add the empty-area statistics "
-            "of --empty-stats to the per-image summary; write both as CSVs."
+            "R1..RN bands of --regions, and summarize the image (cell counts "
+            "and empty area); write both as CSVs."
         )
     )
     parser.add_argument("--intensity", required=True, type=Path)
     parser.add_argument("--labels", required=True, type=Path)
     parser.add_argument("--regions", required=True, type=Path)
-    parser.add_argument("--empty-stats", required=True, type=Path,
-                        help="JSON with the image-level empty-area statistics written by create_endomorph_regions.py.")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--output-summary", required=True, type=Path)
+    parser.add_argument("--ring-depths", type=str, default="6 9 24",
+                        help="The ring depths --regions was made with; only their number N "
+                             "is used (bands 1..N, N+1 = empty, N+2 = not imaged).")
+    parser.add_argument("--measure-channels", type=str, default=None,
+                        help="Intensity channels (index or exact name, separated by "
+                             "comma/semicolon/whitespace) to average in every region. "
+                             "Default: all channels.")
     parser.add_argument("--intensity-resolution-level", type=int, default=0)
     parser.add_argument("--labels-resolution-level", type=int, default=0)
     parser.add_argument("--timepoint", type=int, default=0)
-
-    ch = parser.add_argument_group("channels (index or exact name; default: keyword match)")
-    for marker, keywords in DEFAULT_KEYWORDS.items():
-        ch.add_argument(f"--{marker}-channel", default=None,
-                        help=f"Keywords used if omitted: {', '.join(keywords)}")
-
     parser.add_argument("--dataset-id", type=str, default=None)
     return parser.parse_args()
 
@@ -148,40 +131,26 @@ def match_shape(array: np.ndarray, target_shape: tuple[int, ...]) -> np.ndarray:
     return adjusted
 
 
-# --- channel resolution --------------------------------------------------------
-
-
-def resolve_channel(marker: str, spec: str | None, channel_names: list[str]) -> int:
-    """Return the channel index for `marker`; `spec` is an index, an exact channel
-    name, or None to fall back to keyword matching on the channel names."""
-    if spec is not None:
+def resolve_channels(specs: list[str], channel_names: list[str]) -> list[int]:
+    """Channel indices for `specs`: each an index or an exact channel name."""
+    indices = []
+    for spec in specs:
         if spec.lstrip("-").isdigit():
             idx = int(spec)
             if not -len(channel_names) <= idx < len(channel_names):
-                raise ValueError(f"{marker}: channel index {idx} out of range {channel_names}")
-            return idx % len(channel_names)
-        if spec in channel_names:
-            return channel_names.index(spec)
-        raise ValueError(f"{marker}: channel '{spec}' not found in {channel_names}")
-
-    keywords = DEFAULT_KEYWORDS[marker]
-    hits = [
-        i for i, name in enumerate(channel_names)
-        if any(k in name.lower().replace(" ", "").replace("-", "") for k in keywords)
-    ]
-    if len(hits) != 1:
-        raise ValueError(
-            f"{marker}: could not uniquely match keywords {keywords} in channel names "
-            f"{channel_names} (matches: {hits}). Pass --{marker}-channel explicitly."
-        )
-    return hits[0]
+                raise ValueError(f"channel index {idx} out of range {channel_names}")
+            indices.append(idx % len(channel_names))
+        elif spec in channel_names:
+            indices.append(channel_names.index(spec))
+        else:
+            raise ValueError(f"channel '{spec}' not found in {channel_names}")
+    return indices
 
 
-def resolve_channels(channel_names: list[str], overrides: dict[str, str | None]) -> dict[str, int]:
-    mapping = {m: resolve_channel(m, overrides.get(m), channel_names) for m in DEFAULT_KEYWORDS}
-    if len(set(mapping.values())) != len(mapping):
-        raise ValueError(f"Several markers map to the same channel: {mapping}")
-    return mapping
+def column_labels(channel_names: list[str], indices: list[int]) -> list[str]:
+    """Channel names usable in column names; a repeated name gets its index appended."""
+    labels = [channel_names[i].strip().replace(" ", "_") or f"ch{i}" for i in indices]
+    return [f"{lab}_{i}" if labels.count(lab) > 1 else lab for lab, i in zip(labels, indices)]
 
 
 # --- per-cell morphology + band intensities, and per-image summary --------------
@@ -197,24 +166,28 @@ def orientation_degrees(skimage_orientation: float) -> float:
     return angle + 180.0 if angle <= -90.0 else angle
 
 
-def cells_columns(measurements: dict[str, tuple[str, ...]]) -> list[str]:
+def cells_columns(n_regions: int, channel_labels: list[str]) -> list[str]:
     # Fixed so the result always has these columns, even for an image with
     # zero measured cells.
-    return [
-        "label", "centroid_y_px", "centroid_x_px", "area_px", "area", "perimeter",
-        "major_axis_length", "minor_axis_length", "aspect_ratio", "orientation_deg",
-        "R1_area_px", "R2_area_px", "R3_area_px",
-    ] + [f"{region}_{marker}_mean" for region, markers in measurements.items() for marker in markers]
+    regions = [f"R{k}" for k in range(1, n_regions + 1)] + ["cell"]
+    return (
+        [
+            "label", "centroid_y_px", "centroid_x_px", "area_px", "area", "perimeter",
+            "major_axis_length", "minor_axis_length", "aspect_ratio", "orientation_deg",
+        ]
+        + [f"R{k}_area_px" for k in range(1, n_regions + 1)]
+        + [f"{region}_{label}_mean" for region in regions for label in channel_labels]
+    )
 
 
 def measure_cells(
-    labels: np.ndarray, regions: np.ndarray, image: np.ndarray, channel_map: dict[str, int],
-    pixel_size_yx: tuple[float, float], measurements: dict[str, tuple[str, ...]] = DEFAULT_MEASUREMENTS,
+    labels: np.ndarray, regions: np.ndarray, image: np.ndarray, n_regions: int,
+    channels: list[int], channel_labels: list[str], pixel_size_yx: tuple[float, float],
 ) -> pd.DataFrame:
     """One row per cell that create_endomorph_regions.py painted a band pixel for (a
-    cell with no painted pixel was excluded there for touching the image border):
-    morphology, plus the mean of each requested marker in each region (R1/R2/R3
-    bands from `regions`, plus the whole cell mask)."""
+    cell with no painted band pixel was excluded there for touching the image border):
+    morphology, plus the mean of each channel in `channels` in each band R1..RN
+    (nested, from `regions`) and over the whole cell mask."""
     py, px = pixel_size_yx
     pixel_area = py * px
     rows = []
@@ -223,16 +196,13 @@ def measure_cells(
         r0, c0, r1, c1 = prop.bbox
         cell_mask = labels[r0:r1, c0:c1] == prop.label
         region_crop = regions[r0:r1, c0:c1]
-        if not region_crop[cell_mask].any():
+        in_band = (region_crop >= 1) & (region_crop <= n_regions)
+        if not (cell_mask & in_band).any():
             continue  # excluded for touching the image border: no band was painted
 
         crop = image[:, r0:r1, c0:c1]
-        band_masks = {
-            "R1": cell_mask & (region_crop == 1),
-            "R2": cell_mask & (region_crop >= 1) & (region_crop <= 2),
-            "R3": cell_mask & (region_crop >= 1) & (region_crop <= 3),
-            "cell": cell_mask,
-        }
+        masks = {f"R{k}": cell_mask & in_band & (region_crop <= k) for k in range(1, n_regions + 1)}
+        masks["cell"] = cell_mask
 
         minor = prop.axis_minor_length
         row = {
@@ -248,34 +218,51 @@ def measure_cells(
             "aspect_ratio": prop.axis_major_length / minor if minor > 0 else np.nan,
             "orientation_deg": orientation_degrees(prop.orientation),
         }
-        for name in ("R1", "R2", "R3"):
-            row[f"{name}_area_px"] = int(band_masks[name].sum())
+        for k in range(1, n_regions + 1):
+            row[f"R{k}_area_px"] = int(masks[f"R{k}"].sum())
 
-        for region, markers in measurements.items():
-            region_mask = band_masks[region]
+        for region, region_mask in masks.items():
             n = int(region_mask.sum())
-            for marker in markers:
-                values = crop[channel_map[marker]][region_mask]
-                row[f"{region}_{marker}_mean"] = float(values.mean()) if n else np.nan
+            for channel, label in zip(channels, channel_labels):
+                values = crop[channel][region_mask]
+                row[f"{region}_{label}_mean"] = float(values.mean()) if n else np.nan
 
         rows.append(row)
 
-    return pd.DataFrame(rows, columns=cells_columns(measurements))
+    return pd.DataFrame(rows, columns=cells_columns(n_regions, channel_labels))
 
 
-def summarize_image(labels: np.ndarray, n_cells_analysed: int, empty_stats: dict) -> dict:
-    """Cell counts plus the image-level empty-area statistics computed by
-    create_endomorph_regions.py (they need the full empty mask, which the regions
-    zarr only holds where no band was painted)."""
+def summarize_image(labels: np.ndarray, regions: np.ndarray, n_regions: int, n_cells_analysed: int,
+                    pixel_size_yx: tuple[float, float]) -> dict:
+    """Cell counts and areas. Empty = label N+1 and not imaged = label N+2 of `regions`;
+    percentages are of the imaged area."""
+    pixel_area = pixel_size_yx[0] * pixel_size_yx[1]
+    empty = regions == n_regions + 1
+    imaged = regions != n_regions + 2
+    labelled = labels > 0
+    n_imaged = int(imaged.sum())
+    n_empty = int(empty.sum())
+    unlabelled = int((~labelled & imaged).sum())
+    empty_in_cells = int((empty & labelled).sum())
+    pct = (lambda n: 100.0 * n / n_imaged) if n_imaged else (lambda n: np.nan)
     return {
-        "n_cells": len(np.unique(labels[labels > 0])),
+        "n_cells": len(np.unique(labels[labelled])),
         "n_cells_analysed": n_cells_analysed,
-        **empty_stats,
+        "image_area": labels.size * pixel_area,
+        "imaged_area": n_imaged * pixel_area,
+        "empty_area": n_empty * pixel_area,
+        "empty_area_pct": pct(n_empty),
+        "unlabelled_area_pct": pct(unlabelled),
+        "undetected_cell_area_pct": pct(unlabelled - (n_empty - empty_in_cells)),
+        "empty_in_cells_area_pct": pct(empty_in_cells),
     }
 
 
 def main():
     args = parse_args()
+    n_regions = len(parse_token_list(args.ring_depths))
+    if n_regions < 1:
+        raise ValueError("--ring-depths needs at least one value")
 
     intensity_source = mm.ZarrManager(str(args.intensity))
     intensity_md = intensity_source.metadata
@@ -323,29 +310,35 @@ def main():
     if regions.shape != image.shape[1:]:
         print(f"Adjusting regions shape from {regions.shape} to {image.shape[1:]} (pyramid rounding mismatch)")
         regions = match_shape(regions, image.shape[1:])
+    if regions.max() > n_regions + 2:
+        raise ValueError(
+            f"--regions has label {int(regions.max())} but --ring-depths gives {n_regions} band(s) "
+            f"(labels up to {n_regions + 2}): pass the ring depths the regions were made with"
+        )
 
-    overrides = {m: getattr(args, f"{m}_channel") for m in DEFAULT_KEYWORDS}
-    channel_map = resolve_channels(channel_names, overrides)
-    print(f"Channels: {{{', '.join(f'{m}: {channel_names[i]!r}' for m, i in channel_map.items())}}}")
+    specs = parse_token_list(args.measure_channels)
+    channels = resolve_channels(specs, channel_names) if specs else list(range(image.shape[0]))
+    channel_labels = column_labels(channel_names, channels)
+    print(f"Measured channels: {dict(zip(channel_labels, channels))}")
 
-    cells = measure_cells(labels, regions, image, channel_map, pixel_size_yx)
+    cells = measure_cells(labels, regions, image, n_regions, channels, channel_labels, pixel_size_yx)
     if args.dataset_id:
         cells.insert(0, "dataset_id", args.dataset_id)
     cells.to_csv(args.output, index=False)
 
-    py, px = pixel_size_yx
-    empty_stats = json.loads(args.empty_stats.read_text())
-    summary = summarize_image(labels, len(cells), empty_stats)
+    summary = summarize_image(labels, regions, n_regions, len(cells), pixel_size_yx)
     for col in ("area", "aspect_ratio", "perimeter"):
         summary[f"mean_{col}"] = cells[col].mean() if col in cells.columns and len(cells) else np.nan
 
+    py, px = pixel_size_yx
     summary = {
         **({"dataset_id": args.dataset_id} if args.dataset_id else {}),
         **summary,
         "pixel_size_y": py,
         "pixel_size_x": px,
         "unit": unit,
-        "channels": json.dumps({m: channel_names[i] for m, i in channel_map.items()}),
+        "n_regions": n_regions,
+        "measured_channels": json.dumps(dict(zip(channel_labels, channels))),
     }
     pd.DataFrame([summary]).to_csv(args.output_summary, index=False)
 

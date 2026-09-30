@@ -9,18 +9,18 @@ the standalone `endo_morph` scripts
 (`Z:\people\gritti\projects\Candelas_Adrian\endo_morph`):
 
 8. For every final-Cellpose-labelled cell that does not touch the image
-   border, compute three nested edge-distance bands measured inward from the
-   cell edge (junction, cortical actin, transversal actin), and write them as
+   border, compute N nested edge-distance bands measured inward from the
+   cell edge (any number of `endomorph_ring_depths`), and write them as
    a label OME-Zarr. Cells touching the image border are cut by the field of
    view and are never measured (excluded from the bands entirely). The same
    zarr also holds the cell-free ("empty") area of the image, estimated from
-   the MIP fluorescence signal alone -- never from the labels, since Cellpose
-   can both miss cells and over-reach into cell-free pixels -- and the
-   not-imaged area.
-9. Against those bands, measure per-cell shape morphology (area, perimeter,
-   aspect ratio, orientation) and V-cadherin/myosin/actin mean intensity in
-   each band (and over the whole cell), and add the image-level empty-area
-   statistics from stage 8 to the per-image summary.
+   the fluorescence of `endomorph_empty_channels` alone -- never from the
+   labels, since Cellpose can both miss cells and over-reach into cell-free
+   pixels -- and the not-imaged area.
+9. Against that regions zarr, measure per-cell shape morphology (area,
+   perimeter, aspect ratio, orientation) and the mean intensity of every
+   measured channel in each band (and over the whole cell), and write the
+   per-image summary (cell counts and empty-area statistics).
 10. Merge the per-dataset cells and summary CSVs of all rows into one cells
    CSV and one summary CSV, saved next to the launch `.sh` script.
 
@@ -33,26 +33,28 @@ levels *from* the level it segments onward, so the final labels' own level
 
 ## Algorithm
 
-Stages 8 and 9 take the MIP (4 channels: V-cadherin, myosin, nuclei, actin)
-and the final Cellpose label image (`0` = background, `1..N` = cells), both at
-the same pyramid level and with the same Y/X size. The MIP's metadata gives
-the pixel size (so areas and lengths come out in physical units, e.g. µm) and
-the `channel_names` used to find which channel holds which marker. A Z axis, if
-present, is max-projected, and the time point is selected with
+Stages 8 and 9 take the MIP (any number of channels) and the final Cellpose
+label image (`0` = background, `1..N` = cells), both at the same pyramid level
+and with the same Y/X size. The MIP's metadata gives the pixel size (so areas
+and lengths come out in physical units, e.g. µm) and the `channel_names` that
+`endomorph_empty_channels` and `endomorph_measure_channels` refer to. A Z axis,
+if present, is max-projected, and the time point is selected with
 `endomorph_timepoint` (default `0`).
 
-### Bands (R1, R2, R3) -- stage 8
+### Bands (R1 ... RN) -- stage 8
 
 For each cell, the distance of every pixel to the edge of *that cell's* mask is
 computed (a mask pixel next to the background has distance 1). Every band
-starts at the edge and goes inward to its depth, so the bands are nested:
+starts at the edge and goes inward to its depth, so the bands are nested. The
+number of bands is the number of `endomorph_ring_depths` (default `6 9 24`,
+i.e. three):
 
-| Band | Default depth | Pixels included | Markers averaged (stage 9) |
-| --- | --- | --- | --- |
-| **R1** junction | 6 px | 0-6 px from the edge | V-cadherin |
-| **R2** cortical actin | 9 px | 0-9 px from the edge (includes R1) | myosin, actin |
-| **R3** transversal actin | 24 px | 0-24 px from the edge (includes R1 and R2) | myosin, actin |
-| **cell** | whole mask | all pixels of the cell | V-cadherin, myosin, actin |
+| Band | Default depth | Pixels included |
+| --- | --- | --- |
+| **R1** | 6 px | 0-6 px from the edge |
+| **R2** | 9 px | 0-9 px from the edge (includes R1) |
+| **R3** | 24 px | 0-24 px from the edge (includes R1 and R2) |
+| **cell** | whole mask | all pixels of the cell |
 
 Change the depths with `endomorph_ring_depths`. A border shared with a
 neighbouring cell counts as an edge (distance is computed per cell, so the
@@ -65,9 +67,9 @@ size. To keep the same physical bands at the next level, halve the depths (e.g.
 `6 9 24` -> `3 4.5 12`).
 
 The bands are written as one label image: each pixel holds the *narrowest* band
-that contains it (`1` = R1, `2` = R2 outside R1, `3` = R3 outside R2). Anything
-deeper than R3, background pixels, and cells excluded for touching the image
-border are `0`.
+that contains it (`1` = R1, `2` = R2 outside R1, ... `N` = RN outside R(N-1)).
+Anything deeper than RN, background pixels, and cells excluded for touching the
+image border are `0`; the empty area is `N+1` and the not-imaged area `N+2`.
 
 ### Cells at the image border -- stage 8
 
@@ -105,13 +107,11 @@ pixel size is anisotropic, and the X size is used).
 ### Band intensities -- stage 9
 
 For every measured cell, the mean raw pixel value (no background subtraction)
-of each marker is computed in the regions listed in the band table above:
-`R1_vcad_mean`, `R2_myosin_mean`, `R2_actin_mean`, `R3_myosin_mean`,
-`R3_actin_mean`, plus the whole-cell means `cell_vcad_mean`,
-`cell_myosin_mean`, `cell_actin_mean`. `R1_area_px`, `R2_area_px` and
-`R3_area_px` give the number of pixels in each band (a band is `NaN` for a
-marker if it has no pixel). A cell counts as measured if stage 8 painted any
-band pixel for it.
+of each channel in `endomorph_measure_channels` (default: all) is computed in
+every band and in the whole cell: `R1_<channel>_mean` ... `RN_<channel>_mean`
+and `cell_<channel>_mean`. `R1_area_px` ... `RN_area_px` give the number of
+pixels in each band (the mean is `NaN` for a band with no pixel). A cell counts
+as measured if stage 8 painted any band pixel for it.
 
 ### Empty area -- stage 8
 
@@ -121,15 +121,15 @@ labels. Cellpose is not perfect in either direction: it can miss cells
 pixels (labelled pixels that *are* empty). Both are handled correctly by
 looking only at the signal.
 
-Empty pixels are dark in **every** marker channel. Cells are dark in *some*
-channel almost everywhere -- cytoplasm has little V-cadherin, a nucleus has
-little of any marker -- so the steps below combine the channels. Pixels that
+Empty pixels are dark in **every** empty-area channel. Cells are dark in *some*
+channel almost everywhere -- e.g. the cytoplasm has little of a junction
+marker, a nucleus has little of any cytoplasmic marker -- so the steps below
+combine the channels. Pixels that
 are zero in every channel (e.g. padding outside the acquired field) are **not
 imaged** and are left out of all area percentages.
 
 1. **Cell level per channel.** Every channel in `endomorph_empty_channels`
-   (default `vcad myosin actin`; the **nuclei stain is excluded**, being dark
-   over most of the cell) is smoothed (`endomorph_empty_smoothing`, default 2
+   (leave out a channel that is dark over most of the cell, such as a nuclei stain) is smoothed (`endomorph_empty_smoothing`, default 2
    µm, ignoring pixels outside the acquired field). Its *cell level* is the
    median over the interior of the labelled cells (pixels farther than twice
    the smoothing width from the edge of the labelled area). This is the only
@@ -176,13 +176,13 @@ fluorescence disagree.
 | --- | --- |
 | A field with visible gaps reports 0 % empty | Nothing was dark in every channel at once. Raise `endomorph_empty_seed_percentile` (e.g. 2 or 5), or check whether one channel is bright everywhere (background too high, or a channel that should be left out of `endomorph_empty_channels`) |
 | Nuclei or dim cytoplasm are marked empty | Lower `endomorph_empty_seed_percentile` (e.g. 0.5, 0.1): seeds must be pixels that are unambiguously background |
-| Cytoplasm inside cells is marked empty | Increase `endomorph_empty_smoothing`, or restrict `endomorph_empty_channels` to the markers that fill the cell (`myosin actin`) |
+| Cytoplasm inside cells is marked empty | Increase `endomorph_empty_smoothing`, or restrict `endomorph_empty_channels` to the channels that fill the cell |
 | Thin protrusions are marked empty | Increase `endomorph_empty_smoothing` |
 | Small gaps are missed | Lower `endomorph_empty_smoothing` or `endomorph_empty_min_area` |
 
-Check the `channels` column of the summary (the channel name used for each
-marker) before trusting the numbers, and `empty_channel_levels` for the
-background and cell level of every channel and which ones were used.
+Check `<id>_endomorph_empty_qc.json` (in the work directory of
+`PYMIF_ENDOMORPH_REGIONS`) before trusting the numbers: `empty_channel_levels`
+gives the background and cell level of every channel and which ones were used.
 
 ## Input CSV
 
@@ -208,29 +208,28 @@ outputs you want to keep.
 
 | CSV column | Purpose |
 | --- | --- |
-| `endomorph_ring_depths` | Three band depths (`R1 R2 R3`), from the cell edge in pixels of the final segmentation's resolution level, separated by `;`, `,` or whitespace. All bands start at the edge, so they are nested (e.g. `6 9 24` -> R1 = 0-6px, R2 = 0-9px, R3 = 0-24px from the edge). Defaults to `6 9 24`. |
+| `endomorph_ring_depths` | Band depths (`R1 R2 ... RN`, any number of bands >= 1, strictly increasing), from the cell edge in pixels of the final segmentation's resolution level, separated by `;`, `,` or whitespace. All bands start at the edge, so they are nested (e.g. `6 9 24` -> R1 = 0-6px, R2 = 0-9px, R3 = 0-24px from the edge; `3 8` -> two bands). Defaults to `6 9 24`. |
 | `endomorph_border_margin` | Cells with any pixel within this many pixels of the image border are considered cut by the field of view and are not measured. Defaults to `10`. |
 | `endomorph_timepoint` | Time index to analyse, for both stages 8 and 9. Defaults to `0` (always `0` for MIPs). |
 
-Bands and empty area are written to `endomorph_regions_output` as a
-single-level OME-Zarr label image, at the resolution of the MIP: value `0` =
-none of the below (including cells excluded for touching the border), `1` =
-R1, `2` = R2 outside R1, `3` = R3 outside R2, `4` = empty area, `5` = not
-imaged. Bands keep priority: `4` and `5` are only painted on pixels without a
-band, so an empty region overlapping a cell mask shows the band there (the
-percentages in the summary, e.g. `empty_in_cells_area_pct`, are computed from
-the full empty mask). `PYMIF_ENDOMORPH_REGIONS` also hands the image-level
-empty-area statistics to `PYMIF_ENDOMORPH_FEATURES` in a JSON file in its work
-directory. Downstream, `PYMIF_ENDOMORPH_FEATURES` treats a cell as measured if
-it has any painted band pixel; a cell with none was excluded here for touching
-the border.
+With `N` bands, bands and empty area are written to `endomorph_regions_output` as a
+single-level OME-Zarr label image, at the resolution of the MIP: `1`..`N` =
+R1..RN (each pixel holds the narrowest band containing it), `N+1` = empty
+area, `N+2` = not imaged, `0` = none of these (including cells excluded for
+touching the border). Empty and not-imaged pixels overwrite the bands, so a
+cell pixel that is empty is not counted in that cell's bands.
+`PYMIF_ENDOMORPH_FEATURES` reads everything it needs, including the empty
+area, from this zarr, and treats a cell as measured if it has any band pixel;
+a cell with none was excluded here for touching the border.
 
-### Channel and empty-area columns (used by stage 8; the channel columns also by stage 9)
+### Channel and empty-area columns (stage 8, `PYMIF_ENDOMORPH_REGIONS`; the measured channels are stage 9)
+
+Channels are given as the exact `channel_names` entry of the MIP (e.g. `Alexa_488`, no spaces or commas in the name) or its index (e.g. `0`), separated by whitespace, `,` or `;`. Nothing in the workflow assumes what a channel stains.
 
 | CSV column | Purpose |
 | --- | --- |
-| `endomorph_vcad_channel`, `endomorph_myosin_channel`, `endomorph_actin_channel`, `endomorph_nuclei_channel` | MIP channel to use for each marker: either the exact `channel_names` entry (e.g. `Alexa_488`) or its index (e.g. `0`). Left blank, each is matched automatically by keyword against `channel_names` (`488`/`cad` for vcad, `561`/`568`/`myo` for myosin, `647`/`actin` for actin, `hoechst`/`dapi`/`405` for nuclei); an ambiguous or missing match raises a clear error. The `nuclei` channel is only used to exclude it from `endomorph_empty_channels` matching below, not measured itself. |
-| `endomorph_empty_channels` | Markers whose signal means cells are present, separated by whitespace, e.g. `myosin actin`. The nuclei stain is excluded by default (it stains only the nucleus, so the rest of the cell is as dark as background in that channel). Defaults to `vcad myosin actin`. |
+| `endomorph_empty_channels` | Channels whose signal means cells are present. Defaults to all channels; leave out one that stains only part of the cell, such as a nuclei stain (the rest of the cell is as dark as background in that channel, which makes the empty area smaller). |
+| `endomorph_measure_channels` | Stage 9: channels whose mean is computed in every band and in the whole cell. Defaults to all channels. |
 | `endomorph_empty_smoothing` | Gaussian smoothing of the signal before thresholding, in physical units (e.g. µm). Defaults to `2.0`. |
 | `endomorph_empty_min_area` | Empty regions smaller than this (physical units²) are ignored. Defaults to `25.0`. |
 | `endomorph_empty_seed_percentile` | An empty region starts where a pixel is darker than this percentile of the cell pixels in *every* `endomorph_empty_channels` channel at once. No such pixel means no empty area (e.g. a confluent field). Defaults to `1.0`. |
@@ -245,9 +244,9 @@ labels are part of the regions zarr (the equivalent of `--save-regions`).
 ### Example
 
 ```csv
-dataset_id,input,microscope,output,chunk_size,zarr_format,seed_channels,seed_diameter,filter_min_area,filter_max_area,filter_properties,cellpose_diameter,cellpose_channels,endomorph_ring_depths,endomorph_border_margin
-sample_01,/g/mif-hd/shared/data/sample_01.ome.tiff,opera,sample_01.ome.zarr,1 1 1 512 512,2,2,30,50,5000,form_factor:0.5:,30,4;1,6 9 24,10
-sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,sample_02.ome.zarr,,2,2,30,50,,,25,4,,
+dataset_id,input,microscope,output,chunk_size,zarr_format,seed_channels,seed_diameter,filter_min_area,filter_max_area,filter_properties,cellpose_diameter,cellpose_channels,endomorph_ring_depths,endomorph_border_margin,endomorph_empty_channels,endomorph_measure_channels
+sample_01,/g/mif-hd/shared/data/sample_01.ome.tiff,opera,sample_01.ome.zarr,1 1 1 512 512,2,2,30,50,5000,form_factor:0.5:,30,4;1,6 9 24,10,Alexa_488 Alexa_568 Alexa_647,
+sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,sample_02.ome.zarr,,2,2,30,50,,,25,4,3 8,,0 1 3,0 1 3
 ```
 
 ## Parameters
@@ -266,9 +265,11 @@ For each dataset (`<id>` = `dataset_id`), at the path given in the matching
 
 | File | Content |
 | --- | --- |
-| `<id>_endomorph_regions.ome.zarr` | Region-bands + empty-area label image (stage 8; `0`-`5`, see above) |
-| `<id>_endomorph_cells.csv` | One row per measured cell: `dataset_id`, `label`, centroid, area, perimeter, axis lengths, `aspect_ratio`, `orientation_deg`, `R1_area_px`/`R2_area_px`/`R3_area_px`, and per-band marker means `R1_vcad_mean`, `R2_myosin_mean`, `R2_actin_mean`, `R3_myosin_mean`, `R3_actin_mean`, `cell_vcad_mean`, `cell_myosin_mean`, `cell_actin_mean` |
-| `<id>_endomorph_summary.csv` | One row for the image: `dataset_id`, `n_cells` (all labelled cells, including those touching the border), `n_cells_analysed` (rows of the cells CSV), `image_area`, `imaged_area`, the empty-area statistics (`empty_area`, `empty_area_pct`, `unlabelled_area_pct`, `undetected_cell_area_pct`, `empty_in_cells_area_pct`, `empty_threshold`, `empty_seed_area_pct`, `empty_background_ratio`, `empty_channels_used`, `empty_channel_levels`), `mean_area`/`mean_aspect_ratio`/`mean_perimeter` over the measured cells, pixel size and unit, the empty-area settings used, and the `channels` assignment (see [Algorithm](#algorithm)) |
+| `<id>_endomorph_regions.ome.zarr` | Region-bands + empty-area label image (stage 8; `1`..`N` = bands, `N+1` = empty, `N+2` = not imaged, `0` = the rest) |
+| `<id>_endomorph_cells.csv` | One row per measured cell: `dataset_id`, `label`, centroid, area, perimeter, axis lengths, `aspect_ratio`, `orientation_deg`, `R<k>_area_px` for every band, and the mean of every measured channel in every band and in the whole cell: `R<k>_<channel>_mean` and `cell_<channel>_mean` (`<channel>` = the channel name, spaces replaced by `_`) |
+| `<id>_endomorph_summary.csv` | One row for the image: `dataset_id`, `n_cells` (all labelled cells, including those touching the border), `n_cells_analysed` (rows of the cells CSV), `image_area`, `imaged_area`, the area statistics computed from the regions zarr (`empty_area`, `empty_area_pct`, `unlabelled_area_pct`, `undetected_cell_area_pct`, `empty_in_cells_area_pct`), `mean_area`/`mean_aspect_ratio`/`mean_perimeter` over the measured cells, pixel size and unit, `n_regions` and `measured_channels` (channel name -> index) |
+
+`PYMIF_ENDOMORPH_REGIONS` also writes `<id>_endomorph_empty_qc.json` to its work directory: the QC diagnostics of the empty-area estimation (`empty_channel_levels` = background and cell level of every channel and whether it was used, `empty_threshold`, `empty_background_ratio`, `empty_seed_area_pct`, `empty_channels_used`, and the settings used). Check it before trusting the empty area of a new dataset.
 
 Once all datasets are done, two merged files are written to
 `--merged_output_dir` (next to the launch `.sh` script):

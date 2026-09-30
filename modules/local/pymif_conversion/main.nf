@@ -48,7 +48,7 @@ process PYMIF_CONVERSION {
     // Required CSV columns have CLI names that differ from their headers.
     def commandParts = [
         'pymif', '2zarr',
-        '--input_path', shellQuote(meta.input),
+        '--input_path', shellQuote(input_dataset),
         '--zarr_path', shellQuote(output_zarr)
     ]
 
@@ -123,7 +123,7 @@ process PYMIF_CONVERSION {
     """
 
     stub:
-    output_zarr = meta.zarr_output_name
+    output_zarr = meta.zarr_output_name ?: "${meta.id}.ome.zarr"
     output_zarr_link = new File(output_zarr.toString()).name
     """
     mkdir -p "${output_zarr}"

@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
 
 """
-Load a PyMIF label OME-Zarr (e.g. the final Cellpose labels of
-conv_mip_cpsam_filt_mask_cpsam) and its MIP intensity OME-Zarr and write ONE
-label OME-Zarr describing where things are:
+Load a PyMIF label OME-Zarr (e.g. the final Cellpose labels) and its intensity
+OME-Zarr (e.g. the MIP) and write ONE label OME-Zarr describing where things are.
+With N ring depths (any N >= 1):
 
-  1=R1, 2=R2 outside R1, 3=R3 outside R2   nested edge-distance bands (measured
-                                           inward from the cell edge) of every
-                                           labelled cell that does not touch the
-                                           image border
-  4=empty                                  cell-free area, estimated from the
-                                           fluorescence signal alone (never from
-                                           the labels, since Cellpose can both
-                                           miss cells and over-reach into
-                                           cell-free pixels)
-  5=not imaged                             zero in every channel (e.g. padding)
-  0=everything else, including cells excluded for touching the border (a cell
-    with no painted band pixel was excluded)
+  1..N     nested edge-distance bands R1..RN, measured inward from the cell edge,
+           of every labelled cell that does not touch the image border. A pixel
+           holds the narrowest band containing it (1=R1, 2=R2 outside R1, ...).
+  N+1      empty: cell-free area, estimated from the fluorescence signal of the
+           --empty-channels alone (never from the labels, since Cellpose can both
+           miss cells and over-reach into cell-free pixels)
+  N+2      not imaged: zero in every channel (e.g. padding)
+  0        everything else, including cells excluded for touching the border (a
+           cell with no painted band pixel was excluded)
 
-Bands keep priority: 4 and 5 are painted only on pixels without a band. Because
-that hides empty pixels that fall inside cell masks, all the image-level
-empty-area statistics are computed here from the full masks and written to a
-JSON file (--output-empty-stats) for extract_endomorph_features.py to add to its
-per-image summary.
+Empty and not-imaged pixels overwrite the bands. All measurements (per-cell
+features and the per-image summary, including the empty area) are computed
+downstream, from this zarr, by extract_endomorph_features.py. A JSON with QC
+diagnostics of the empty-area estimation (channel levels, threshold, ...) is
+written to --output-empty-qc.
 
 The zarr is written at the resolution of the intensity image
 (--intensity-resolution-level); the labels are cropped/zero-padded to it if
@@ -43,19 +40,7 @@ import pymif.microscope_manager as mm
 from scipy import ndimage as ndi
 from skimage.measure import regionprops
 
-REGION_NAMES = ("R1", "R2", "R3")
-QC_EMPTY = 4
-QC_NOT_IMAGED = 5
-
 EDGE_THRESHOLD = 0.5  # cell signal is normalized to 0 = background, 1 = cell level
-
-# Keywords are matched case-insensitively against the intensity channel_names.
-DEFAULT_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "vcad": ("488", "cad"),
-    "myosin": ("561", "568", "myo"),
-    "actin": ("647", "actin"),
-    "nuclei": ("hoechst", "dapi", "405"),
-}
 
 # NGFF requires UCUM-style unit names; pymif reports e.g. "µm".
 NGFF_UNITS = {
@@ -67,17 +52,17 @@ NGFF_UNITS = {
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Compute nested R1/R2/R3 edge-distance bands for every "
-            "non-border-touching cell of a label OME-Zarr, plus the empty and "
-            "not-imaged areas of the intensity image, and write them as one "
-            "label OME-Zarr."
+            "Compute nested R1..RN edge-distance bands for every "
+            "non-border-touching cell of a label OME-Zarr, plus the empty "
+            "(N+1) and not-imaged (N+2) areas of the intensity image, and "
+            "write them as one label OME-Zarr."
         )
     )
     parser.add_argument("--labels", required=True, type=Path)
     parser.add_argument("--intensity", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--output-empty-stats", required=True, type=Path,
-                        help="JSON file with the image-level empty-area statistics.")
+    parser.add_argument("--output-empty-qc", required=True, type=Path,
+                        help="JSON file with QC diagnostics of the empty-area estimation.")
     parser.add_argument("--resolution-level", type=int, default=0,
                         help="Resolution level of --labels.")
     parser.add_argument("--intensity-resolution-level", type=int, default=0)
@@ -87,9 +72,9 @@ def parse_args():
         type=str,
         default="6 9 24",
         help=(
-            "Three band depths (R1 R2 R3), from the cell edge in pixels of "
-            "the intensity resolution level, separated by comma/semicolon/whitespace. "
-            "All bands start at the edge, so they are nested."
+            "Band depths (R1 R2 ... RN, any number >= 1, strictly increasing), from the "
+            "cell edge in pixels of the intensity resolution level, separated by "
+            "comma/semicolon/whitespace. All bands start at the edge, so they are nested."
         ),
     )
     parser.add_argument(
@@ -102,15 +87,12 @@ def parse_args():
         ),
     )
 
-    ch = parser.add_argument_group("channels (index or exact name; default: keyword match)")
-    for marker, keywords in DEFAULT_KEYWORDS.items():
-        ch.add_argument(f"--{marker}-channel", default=None,
-                        help=f"Keywords used if omitted: {', '.join(keywords)}")
-
     em = parser.add_argument_group("empty area")
-    em.add_argument("--empty-channels", type=str, default="vcad myosin actin",
-                    help="Markers whose signal means cells are present, separated by "
-                         "comma/semicolon/whitespace. The nuclei stain is excluded by default.")
+    em.add_argument("--empty-channels", default=None, type=str,
+                    help="Intensity channels (index or exact name, separated by "
+                         "comma/semicolon/whitespace) whose signal means cells are present. "
+                         "Default: all channels. Leave out channels that only stain part of "
+                         "the cell (e.g. nuclei).")
     em.add_argument("--empty-smoothing", type=float, default=2.0, metavar="UM",
                     help="Gaussian smoothing of the signal before thresholding, in physical units.")
     em.add_argument("--empty-min-area", type=float, default=25.0, metavar="UM2",
@@ -130,11 +112,31 @@ def parse_token_list(text: str | None) -> list[str]:
     return [token for token in re.split(r"[;,\s]+", text.strip()) if token]
 
 
-def parse_ring_depths(text: str) -> tuple[float, float, float]:
-    tokens = parse_token_list(text)
-    if len(tokens) != 3:
-        raise ValueError(f"--ring-depths must have exactly 3 values (R1 R2 R3), got {text!r}")
-    return tuple(float(token) for token in tokens)
+def parse_ring_depths(text: str) -> tuple[float, ...]:
+    depths = tuple(float(token) for token in parse_token_list(text))
+    if not depths:
+        raise ValueError("--ring-depths needs at least one value")
+    if any(d <= 0 for d in depths) or any(a >= b for a, b in zip(depths, depths[1:])):
+        raise ValueError(f"--ring-depths must be positive and strictly increasing, got {text!r}")
+    if len(depths) + 2 > 255:
+        raise ValueError("--ring-depths: too many bands for an 8-bit label image")
+    return depths
+
+
+def resolve_channels(specs: list[str], channel_names: list[str]) -> list[int]:
+    """Channel indices for `specs`: each an index or an exact channel name."""
+    indices = []
+    for spec in specs:
+        if spec.lstrip("-").isdigit():
+            idx = int(spec)
+            if not -len(channel_names) <= idx < len(channel_names):
+                raise ValueError(f"channel index {idx} out of range {channel_names}")
+            indices.append(idx % len(channel_names))
+        elif spec in channel_names:
+            indices.append(channel_names.index(spec))
+        else:
+            raise ValueError(f"channel '{spec}' not found in {channel_names}")
+    return indices
 
 
 # --- loading -----------------------------------------------------------------
@@ -205,39 +207,6 @@ def match_shape(array: np.ndarray, target_shape: tuple[int, ...]) -> np.ndarray:
     return adjusted
 
 
-def resolve_channel(marker: str, spec: str | None, channel_names: list[str]) -> int:
-    """Return the channel index for `marker`; `spec` is an index, an exact channel
-    name, or None to fall back to keyword matching on the channel names."""
-    if spec is not None:
-        if spec.lstrip("-").isdigit():
-            idx = int(spec)
-            if not -len(channel_names) <= idx < len(channel_names):
-                raise ValueError(f"{marker}: channel index {idx} out of range {channel_names}")
-            return idx % len(channel_names)
-        if spec in channel_names:
-            return channel_names.index(spec)
-        raise ValueError(f"{marker}: channel '{spec}' not found in {channel_names}")
-
-    keywords = DEFAULT_KEYWORDS[marker]
-    hits = [
-        i for i, name in enumerate(channel_names)
-        if any(k in name.lower().replace(" ", "").replace("-", "") for k in keywords)
-    ]
-    if len(hits) != 1:
-        raise ValueError(
-            f"{marker}: could not uniquely match keywords {keywords} in channel names "
-            f"{channel_names} (matches: {hits}). Pass --{marker}-channel explicitly."
-        )
-    return hits[0]
-
-
-def resolve_channels(channel_names: list[str], overrides: dict[str, str | None]) -> dict[str, int]:
-    mapping = {m: resolve_channel(m, overrides.get(m), channel_names) for m in DEFAULT_KEYWORDS}
-    if len(set(mapping.values())) != len(mapping):
-        raise ValueError(f"Several markers map to the same channel: {mapping}")
-    return mapping
-
-
 # --- bands ---------------------------------------------------------------------
 
 
@@ -252,17 +221,15 @@ def edge_distance(cell_mask: np.ndarray) -> np.ndarray:
     return dist
 
 
-def band_masks(dist: np.ndarray, depths: tuple[float, ...]) -> list[np.ndarray]:
-    """One mask per depth, each covering ``0 < dist <= depth`` (nested bands)."""
-    return [(dist > 0) & (dist <= d) for d in depths]
-
-
 def paint_bands(labels: np.ndarray, depths: tuple[float, ...], border_margin: int) -> tuple[np.ndarray, int, int]:
-    """Band image (0/1/2/3) plus the number of cells measured and in total."""
+    """Band image (0, 1..N) plus the number of cells measured and in total."""
     h, w = labels.shape
     region_image = np.zeros(labels.shape, np.uint8)
     n_total = 0
     n_measured = 0
+
+    # Paint the widest band first so narrower bands stay visible on top.
+    order = sorted(enumerate(depths, start=1), key=lambda x: -x[1])
 
     for prop in regionprops(labels):
         n_total += 1
@@ -276,14 +243,11 @@ def paint_bands(labels: np.ndarray, depths: tuple[float, ...], border_margin: in
         mask = labels[sr0:sr1, sc0:sc1] == prop.label
 
         dist = edge_distance(mask)
-        bands = dict(zip(REGION_NAMES, band_masks(dist, depths)))
         n_measured += 1
 
         target = region_image[sr0:sr1, sc0:sc1]
-        # Paint the widest band first so narrower bands stay visible on top.
-        order = sorted(enumerate(REGION_NAMES, start=1), key=lambda x: -depths[x[0] - 1])
-        for i, name in order:
-            target[bands[name]] = i
+        for i, depth in order:
+            target[(dist > 0) & (dist <= depth)] = i
 
     return region_image, n_measured, n_total
 
@@ -364,9 +328,9 @@ def estimate_empty_area(
     seed_percentile: float = 1.0,
     min_contrast: float = 0.25,
 ) -> EmptyArea:
-    """`image` is (C, Y, X), `labels` (Y, X). Empty pixels are dark in *every* marker
-    channel, cells are dark in some channel almost everywhere; labels are only used to
-    scale the cell level."""
+    """`image` is (C, Y, X), `labels` (Y, X). Empty pixels are dark in *every* channel
+    of `channels`, cells are dark in some channel almost everywhere; labels are only
+    used to scale the cell level."""
     min_area_px = max(int(round(min_area_px)), 1)
 
     imaged = ~remove_small_regions(~np.any(image != 0, axis=0), min_area_px)
@@ -408,37 +372,27 @@ def estimate_empty_area(
     return result
 
 
-def empty_area_stats(labels: np.ndarray, pixel_size_yx: tuple[float, float], empty: EmptyArea) -> dict:
-    """Image-level empty-area statistics, from the full masks (before band priority)."""
-    pixel_area = pixel_size_yx[0] * pixel_size_yx[1]
+def empty_area_qc(empty: EmptyArea, channel_names: list[str]) -> dict:
+    """QC diagnostics of the estimation (what the empty area is not enough to tell)."""
     imaged = int(empty.imaged.sum())
-    n_empty = int(empty.empty.sum())
-    labelled = labels > 0
-    unlabelled = int((~labelled & empty.imaged).sum())
-    empty_in_cells = int((empty.empty & labelled).sum())
-    pct = (lambda n: 100.0 * n / imaged) if imaged else (lambda n: float("nan"))
     return {
-        "image_area": labels.size * pixel_area,
-        "imaged_area": imaged * pixel_area,
-        "empty_area": n_empty * pixel_area,
-        "empty_area_pct": pct(n_empty),
-        "unlabelled_area_pct": pct(unlabelled),
-        "undetected_cell_area_pct": pct(unlabelled - (n_empty - empty_in_cells)),
-        "empty_in_cells_area_pct": pct(empty_in_cells),
         "empty_threshold": empty.threshold,
         "empty_background_ratio": empty.background_ratio,
-        "empty_seed_area_pct": pct(int(empty.seeds.sum())),
-        "empty_channel_levels": json.dumps({
-            lv.channel: {"background": round(lv.background, 2), "cell": round(lv.cell, 2), "used": lv.used}
+        "empty_seed_area_pct": 100.0 * int(empty.seeds.sum()) / imaged if imaged else float("nan"),
+        "empty_channels_used": [channel_names[c] for c in empty.used],
+        "empty_channel_levels": {
+            channel_names[lv.channel]: {
+                "background": round(lv.background, 2), "cell": round(lv.cell, 2), "used": lv.used,
+            }
             for lv in empty.levels
-        }),
-        "empty_channels_used": " ".join(str(c) for c in empty.used),
+        },
     }
 
 
 def main():
     args = parse_args()
     depths = parse_ring_depths(args.ring_depths)
+    n_regions = len(depths)
 
     intensity_source = mm.ZarrManager(str(args.intensity))
     intensity_md = intensity_source.metadata
@@ -471,32 +425,27 @@ def main():
 
     region_image, n_measured, n_total = paint_bands(labels, depths, args.border_margin)
 
-    overrides = {m: getattr(args, f"{m}_channel") for m in DEFAULT_KEYWORDS}
-    channel_map = resolve_channels(channel_names, overrides)
-    print(f"Channels: {{{', '.join(f'{m}: {channel_names[i]!r}' for m, i in channel_map.items())}}}")
-    empty_channels = parse_token_list(args.empty_channels)
-    unknown = [m for m in empty_channels if m not in DEFAULT_KEYWORDS]
-    if unknown:
-        raise ValueError(f"--empty-channels: unknown marker(s) {unknown}, expected any of {list(DEFAULT_KEYWORDS)}")
+    specs = parse_token_list(args.empty_channels)
+    empty_channels = resolve_channels(specs, channel_names) if specs else list(range(image.shape[0]))
+    print(f"Empty-area channels: {[channel_names[c] for c in empty_channels]}")
 
     empty = estimate_empty_area(
-        image, labels, [channel_map[m] for m in empty_channels],
+        image, labels, empty_channels,
         sigma_px=args.empty_smoothing / px, min_area_px=args.empty_min_area / (py * px),
         seed_percentile=args.empty_seed_percentile, min_contrast=args.empty_min_contrast,
     )
-    stats = {
-        **empty_area_stats(labels, (py, px), empty),
-        "empty_channels": " ".join(empty_channels),
+    qc = {
+        **empty_area_qc(empty, channel_names),
+        "empty_channels": [channel_names[c] for c in empty_channels],
         "empty_smoothing_um": args.empty_smoothing,
         "empty_min_area_um2": args.empty_min_area,
         "empty_seed_percentile": args.empty_seed_percentile,
         "empty_min_contrast": args.empty_min_contrast,
     }
-    args.output_empty_stats.write_text(json.dumps(stats, indent=2))
+    args.output_empty_qc.write_text(json.dumps(qc, indent=2))
 
-    # Bands keep priority: empty / not imaged only fill pixels without a band.
-    region_image[empty.empty & (region_image == 0)] = QC_EMPTY
-    region_image[~empty.imaged & (region_image == 0)] = QC_NOT_IMAGED
+    region_image[empty.empty] = n_regions + 1
+    region_image[~empty.imaged] = n_regions + 2
 
     out_unit = NGFF_UNITS.get(unit, unit) or "micrometer"
     out_metadata = {
@@ -517,8 +466,8 @@ def main():
         f"{n_measured}/{n_total} cell(s) measured (excluded {n_total - n_measured} "
         f"touching the border within {args.border_margin}px)"
     )
-    print(f"Bands (px from edge): {dict(zip(REGION_NAMES, depths))}")
-    print(f"Empty area: {stats['empty_area_pct']:.2f}% of the imaged area")
+    print(f"Bands (px from edge): { {f'R{i}': d for i, d in enumerate(depths, start=1)} }")
+    print(f"Labels: 1..{n_regions}=bands, {n_regions + 1}=empty, {n_regions + 2}=not imaged")
     print(f"Wrote region bands + empty area to {args.output}")
 
 

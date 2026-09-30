@@ -4,7 +4,7 @@ process PYMIF_ENDOMORPH_FEATURES {
     container 'ghcr.io/grinic/pymif:2026.9.1'
 
     input:
-    tuple val(meta), path(intensity_zarr), path(labels_zarr), path(regions_zarr), path(empty_stats_json)
+    tuple val(meta), path(intensity_zarr), path(labels_zarr), path(regions_zarr)
 
     output:
     tuple val(meta), path(output_csv_link), path(output_summary_csv_link), emit: csv
@@ -25,10 +25,8 @@ process PYMIF_ENDOMORPH_FEATURES {
     def intensityLevelArg = meta.endomorph_intensity_resolution_level != null ? "--intensity-resolution-level ${meta.endomorph_intensity_resolution_level}" : ""
     def labelsLevelArg = meta.endomorph_labels_resolution_level != null ? "--labels-resolution-level ${meta.endomorph_labels_resolution_level}" : ""
     def timepointArg = meta.endomorph_timepoint != null ? "--timepoint ${meta.endomorph_timepoint}" : ""
-    def vcadArg = meta.endomorph_vcad_channel ? "--vcad-channel ${shellQuote(meta.endomorph_vcad_channel)}" : ""
-    def myosinArg = meta.endomorph_myosin_channel ? "--myosin-channel ${shellQuote(meta.endomorph_myosin_channel)}" : ""
-    def actinArg = meta.endomorph_actin_channel ? "--actin-channel ${shellQuote(meta.endomorph_actin_channel)}" : ""
-    def nucleiArg = meta.endomorph_nuclei_channel ? "--nuclei-channel ${shellQuote(meta.endomorph_nuclei_channel)}" : ""
+    def ringDepthsArg = meta.endomorph_ring_depths ? "--ring-depths ${shellQuote(meta.endomorph_ring_depths)}" : ""
+    def measureChannelsArg = meta.endomorph_measure_channels ? "--measure-channels ${shellQuote(meta.endomorph_measure_channels)}" : ""
 
     """
     if [ -e ${shellQuote(output_csv)} ] && [ -e ${shellQuote(output_summary_csv)} ]; then
@@ -41,17 +39,14 @@ process PYMIF_ENDOMORPH_FEATURES {
             --intensity "${intensity_zarr}" \
             --labels "${labels_zarr}" \
             --regions "${regions_zarr}" \
-            --empty-stats "${empty_stats_json}" \
             --output "${output_csv}" \
             --output-summary "${output_summary_csv}" \
             --dataset-id ${shellQuote(meta.id)} \
             ${intensityLevelArg} \
             ${labelsLevelArg} \
             ${timepointArg} \
-            ${vcadArg} \
-            ${myosinArg} \
-            ${actinArg} \
-            ${nucleiArg}
+            ${ringDepthsArg} \
+            ${measureChannelsArg}
     fi
 
     if [ ! -e ${shellQuote(output_csv)} ]; then

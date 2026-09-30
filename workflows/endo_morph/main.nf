@@ -157,33 +157,34 @@ workflow {
                 labels_output_name    : resolved_labels_output,
 
                 // PYMIF_ENDOMORPH_REGIONS: for every final-Cellpose-labelled
-                // cell that doesn't touch the image border, computes nested
-                // R1/R2/R3 edge-distance bands (inward from the cell edge)
-                // as a label OME-Zarr, and estimates the cell-free ("empty")
-                // area from the MIP fluorescence signal (labels 4=empty,
-                // 5=not imaged). Morphology and intensities are computed
-                // downstream by PYMIF_ENDOMORPH_FEATURES.
+                // cell that doesn't touch the image border, computes N nested
+                // edge-distance bands R1..RN (inward from the cell edge; N =
+                // number of endomorph_ring_depths) as a label OME-Zarr, and
+                // estimates the cell-free ("empty") area from the fluorescence
+                // of endomorph_empty_channels (labels N+1=empty, N+2=not
+                // imaged). Morphology, intensities and the per-image summary
+                // are computed downstream by PYMIF_ENDOMORPH_FEATURES.
                 endomorph_regions_output_name     : resolved_endomorph_regions_output,
                 endomorph_ring_depths             : Utils.normalizeOptionalText(row.endomorph_ring_depths) ?: '6 9 24',
                 endomorph_border_margin           : endomorph_border_margin_value ? endomorph_border_margin_value as int : 10,
                 endomorph_timepoint               : endomorph_timepoint_value ? endomorph_timepoint_value as int : 0,
 
                 // PYMIF_ENDOMORPH_FEATURES: measures per-cell morphology and
-                // V-cadherin/myosin/actin band intensities against the bands
-                // above, and estimates the cell-free area of the image from
-                // the fluorescence signal. CELLPOSE_FINAL's output labels
-                // pyramid starts at meta.resolution_level (see the seed
-                // features note above), so its own level 0 is the only one
-                // guaranteed to share the MIP's shape at that level.
+                // the mean of endomorph_measure_channels (default: all) in
+                // every band and in the whole cell, and summarizes the image.
+                // CELLPOSE_FINAL's output labels pyramid starts at
+                // meta.resolution_level (see the seed features note above),
+                // so its own level 0 is the only one guaranteed to share the
+                // MIP's shape at that level.
                 endomorph_intensity_resolution_level : resolution_level
                     ? resolution_level as int
                     : (params.resolution_level != null ? params.resolution_level as int : 0),
                 endomorph_labels_resolution_level    : 0,
-                endomorph_vcad_channel        : Utils.normalizeOptionalText(row.endomorph_vcad_channel),
-                endomorph_myosin_channel      : Utils.normalizeOptionalText(row.endomorph_myosin_channel),
-                endomorph_actin_channel       : Utils.normalizeOptionalText(row.endomorph_actin_channel),
-                endomorph_nuclei_channel      : Utils.normalizeOptionalText(row.endomorph_nuclei_channel),
-                endomorph_empty_channels          : Utils.normalizeOptionalText(row.endomorph_empty_channels) ?: 'vcad myosin actin',
+                endomorph_measure_channels    : Utils.normalizeOptionalText(row.endomorph_measure_channels),
+                // Channels whose signal means "cells are present" (index or
+                // exact channel name). Blank = all channels; leave out one
+                // that stains only part of the cell (e.g. a nuclei stain).
+                endomorph_empty_channels          : Utils.normalizeOptionalText(row.endomorph_empty_channels),
                 endomorph_empty_smoothing         : endomorph_empty_smoothing_value ? endomorph_empty_smoothing_value as float : 2.0,
                 endomorph_empty_min_area          : endomorph_empty_min_area_value ? endomorph_empty_min_area_value as float : 25.0,
                 endomorph_empty_seed_percentile   : endomorph_empty_seed_percentile_value ? endomorph_empty_seed_percentile_value as float : 1.0,
@@ -298,13 +299,13 @@ workflow {
 
     /*
      * For every final-Cellpose-labelled cell that doesn't touch the image
-     * border, computes nested R1/R2/R3 edge-distance bands (inward from the
-     * cell edge) plus the empty (4) and not-imaged (5) areas of the MIP, as a
-     * label OME-Zarr (0/1/2/3/4/5). A cell with no painted band pixel was
-     * excluded for touching the image border.
+     * border, computes N nested edge-distance bands R1..RN (inward from the
+     * cell edge) plus the empty (N+1) and not-imaged (N+2) areas of the MIP, as
+     * a label OME-Zarr. A cell with no painted band pixel was excluded for
+     * touching the image border.
      *
      * Expected output:
-     * tuple(meta, regions_zarr, empty_stats_json)
+     * tuple(meta, regions_zarr)   (and .qc: tuple(meta, empty_qc_json))
      */
     ch_regions_inputs = CELLPOSE_FINAL.out.labels
         .map { meta, labels -> tuple(meta.id, meta, labels) }
@@ -314,9 +315,9 @@ workflow {
     PYMIF_ENDOMORPH_REGIONS(ch_regions_inputs)
 
     /*
-     * Measures per-cell morphology and V-cadherin/myosin/actin band
-     * intensities against the MIP and the bands above, and adds the
-     * image-level empty-area statistics to the per-image summary.
+     * Measures per-cell morphology and per-channel band intensities against
+     * the MIP and the regions above, and summarizes each image (cell counts
+     * and empty area).
      *
      * Expected output:
      * tuple(meta, cells_csv, summary_csv)
@@ -324,8 +325,8 @@ workflow {
     ch_endomorph_inputs = PYMIF_MIP.out.zarr
         .map { meta, mip -> tuple(meta.id, meta, mip) }
         .join(CELLPOSE_FINAL.out.labels.map { meta, labels -> tuple(meta.id, labels) })
-        .join(PYMIF_ENDOMORPH_REGIONS.out.zarr.map { meta, regions, stats -> tuple(meta.id, regions, stats) })
-        .map { id, meta, mip, labels, regions, stats -> tuple(meta, mip, labels, regions, stats) }
+        .join(PYMIF_ENDOMORPH_REGIONS.out.zarr.map { meta, regions -> tuple(meta.id, regions) })
+        .map { id, meta, mip, labels, regions -> tuple(meta, mip, labels, regions) }
 
     PYMIF_ENDOMORPH_FEATURES(ch_endomorph_inputs)
 
