@@ -28,7 +28,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
     // 'nearest' (stride sampling) is the only method that guarantees every
     // downsampled pixel is still a real label that existed in the source,
     // so it's hardcoded here rather than exposed as a workflow parameter.
-    def labelDownsampleMethod = 'nearest'
+    def labelDownsampleMethod = 'Sample'
 
     ch_split_images = ch_images.map { meta, image ->
         def (localImage, imageUri) = Utils.splitImageInput(image, noImageSentinel)
