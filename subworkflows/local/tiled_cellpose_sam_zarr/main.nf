@@ -1,53 +1,10 @@
 include { TILE_CONSTRUCTOR      } from '../../../modules/local/tileconstructor/main'
-include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_SAM_ZARR_MIF_TILED} from '../../../modules/local/cellpose_sam_zarr_mif/main'
+include { CELLPOSE_SAM_ZARR_MIF } from '../../../modules/local/cellpose_sam_zarr_mif/main'
 include { PREALLOCATE_ZARR      } from '../../../modules/local/preallocate_zarr/main'
 include { FIND_TILE_NEIGHBORS   } from '../../../modules/local/find_tile_neighbors/main'
 include { LOCAL_LABEL_MATCHER   } from '../../../modules/local/local_label_matcher/main'
 include { LABEL_SOLVER          } from '../../../modules/local/label_solver/main'
 include { WRITE_RELABELED_TILE  } from '../../../modules/local/write_relabeled_tile/main'
-
-process CLEANUP_TILE_SCRATCH {
-    tag "$meta.id"
-    label 'process_low'
-
-    input:
-    tuple val(meta), val(mask_store), val(scratch_dir)
-
-    output:
-    tuple val(meta), val(mask_store), emit: mask
-    path "versions.yml",              emit: versions
-
-    when:
-    task.ext.when == null || task.ext.when
-
-    script:
-    """
-    # Guard against ever rm -rf'ing something unexpected. If scratch_dir
-    # doesn't look like the per-dataset tile-scratch path it's supposed to
-    # be (e.g. meta.id or \$USER resolved empty upstream, collapsing the
-    # path to something much broader), refuse rather than delete blind.
-    case "${scratch_dir}" in
-        */cellpose_tiles_published/*)
-            ;;
-        *)
-            echo "[Cleanup] Refusing to remove unexpected path: ${scratch_dir}" >&2
-            exit 1
-            ;;
-    esac
-
-    if [ -d "${scratch_dir}" ]; then
-        rm -rf "${scratch_dir}"
-        echo "[Cleanup] Removed ${scratch_dir}"
-    else
-        echo "[Cleanup] ${scratch_dir} already absent, nothing to remove"
-    fi
-
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        cleanup: "rm -rf"
-    END_VERSIONS
-    """
-}
 
 workflow TILED_CELLPOSE_SAM_ZARR {
 
@@ -78,7 +35,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .join( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(id, meta, localImage, imageUri) } )
         .map { srcId, tileCsv,parentMeta, localImage, imageUri ->
             def sourceImagePath = imageUri ?: localImage.toString()
-            def mergedOutputZarr = parentMeta.labels_output ?: "${val_output_dir}/${srcId}_merged_mask.ome.zarr"
+            def mergedOutputZarr = Utils.resolveOutput(parentMeta, 'labels_output', "${val_output_dir}/${srcId}_merged_mask.ome.zarr", srcId)
             def mergedMeta = [id: srcId, dtype: 'uint32', data_type: 'label']
             tuple(mergedMeta, sourceImagePath, tileCsv, mergedOutputZarr)
         }
@@ -114,7 +71,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
                     labels_output_name: "${row.dataset_id}_labels.ome.zarr",
                     is_tiled: true,
                 ]
- 
+
                 tuple(tileMeta, image, localImage, imageUri)
             }
         }
@@ -123,26 +80,12 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         ? Channel.value(file(params.cellpose_model_path, checkIfExists: true))
         : Channel.value(file("${repoRootDir}/assets/NO_MODEL_FILE"))
 
-    ch_image_tiles_checked = ch_image_tiles.map { meta, image, localImage, imageUri ->
-        def expectedPath = file("/scratch/${System.getenv('USER')}/cellpose_tiles_published/${meta.source_dataset_id}/${meta.labels_output_name}")
-        def markerFiles = ['.zgroup', 'zarr.json'].collect { file("${expectedPath}/${it}") }
-        def isDone = expectedPath.exists() && markerFiles.any { it.exists() && it.size() > 0 }
-        tuple(meta, image, localImage, imageUri, expectedPath, isDone)
-    }
-
-    ch_to_run = ch_image_tiles_checked
-        .filter { meta, image, localImage, imageUri, expectedPath, done -> !done }
-
-    ch_precomputed = ch_image_tiles_checked
-        .filter { meta, image, localImage, imageUri, expectedPath, done -> done }
-        .map { meta, image, localImage, imageUri, expectedPath, done -> tuple(meta, expectedPath.toString()) }
-
-    CELLPOSE_SAM_ZARR_MIF_TILED(
-        ch_to_run.map { meta, image, localImage, imageUri, expectedPath, done -> tuple(meta, localImage, imageUri) },
+    CELLPOSE_SAM_ZARR_MIF(
+        ch_image_tiles.map { meta, image, localImage, imageUri -> tuple(meta, localImage, imageUri) },
         ch_cellpose_model
     )
 
-    ch_all_labels = CELLPOSE_SAM_ZARR_MIF_TILED.out.labels.mix(ch_precomputed)
+    ch_all_labels = CELLPOSE_SAM_ZARR_MIF.out.labels
 
     ch_tiles_and_segmentations_csv = ch_all_labels
         .map { meta, label ->
@@ -152,10 +95,10 @@ workflow TILED_CELLPOSE_SAM_ZARR {
             [ "${srcId}_tiles_and_segmentations.csv", row ]
         }
         .map { csvPath -> tuple(csvPath.baseName.replace('_tiles_and_segmentations', ''), csvPath) }
- 
+
     ch_tile_neighbors_input = ch_tiles_and_segmentations_csv
         .map { srcId, csv -> tuple([id: srcId], csv) }
- 
+
     FIND_TILE_NEIGHBORS(ch_tile_neighbors_input)
 
     // dataset_id -> label path, for resolving neighbor labels below.
@@ -163,7 +106,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .map { meta, label -> tuple(meta.id, label) }
         .toList()
         .map { pairs -> pairs.collectEntries { id, label -> [(id): label] } }
- 
+
     ch_local_matcher_input = ch_all_labels
         .map { meta, label -> tuple(meta.id, meta + [label_offset_step: val_label_offset_step], label) }
         .join(
@@ -181,24 +124,24 @@ workflow TILED_CELLPOSE_SAM_ZARR {
                 behind_dataset_id: neighborRow.behind_dataset_id,
                 behind_tile_index: neighborRow.behind_tile_index,
             ]
- 
+
             def rightZarr  = labelPathById[neighborRow.right_dataset_id]  ?: noNeighborZarr
             def bottomZarr = labelPathById[neighborRow.bottom_dataset_id] ?: noNeighborZarr
             def behindZarr = labelPathById[neighborRow.behind_dataset_id] ?: noNeighborZarr
- 
+
             tuple(fullMeta, selfLabel, rightZarr, bottomZarr, behindZarr)
         }
- 
+
     LOCAL_LABEL_MATCHER(ch_local_matcher_input)
 
- 
+
     ch_local_graphs_grouped = LOCAL_LABEL_MATCHER.out.local_graph
         .map { meta, json -> tuple(meta.source_dataset_id, json) }
         .groupTuple()
         .map { srcId, jsonList -> tuple([id: srcId, beta: val_multicut_beta], jsonList) }
- 
+
     LABEL_SOLVER(ch_local_graphs_grouped)
- 
+
     ch_write_tile_input = ch_all_labels
         .map { meta, label -> tuple(meta.id, meta + [label_offset_step: val_label_offset_step], label) }
         .join(
@@ -220,28 +163,20 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .map { _srcId, fullMeta, label, tileCsv, store, mapping ->
             tuple(fullMeta, label, tileCsv, store, mapping)
         }
- 
+
     WRITE_RELABELED_TILE(ch_write_tile_input)
 
- 
+
     ch_write_confirmed = WRITE_RELABELED_TILE.out.write_confirmation
         .map { meta, confirmation -> tuple(meta.source_dataset_id, confirmation) }
         .groupTuple(by: 0)
- 
+
     ch_mask_ready = PREALLOCATE_ZARR.out.zarr
         .map { meta, store -> tuple(meta.id, meta, store) }
         .join( ch_write_confirmed )
         .map { _srcId, meta, store, _confirmations -> tuple(meta, store) }
 
-    ch_cleanup_input = ch_mask_ready.map { meta, store ->
-        def scratchDir = "/scratch/${System.getenv('USER')}/cellpose_tiles_published/${meta.id}"
-        tuple(meta, store, scratchDir)
-    }
-
-    CLEANUP_TILE_SCRATCH(ch_cleanup_input)
-    ch_versions = ch_versions.mix(CLEANUP_TILE_SCRATCH.out.versions)
-
     emit:
-    mask     = CLEANUP_TILE_SCRATCH.out.mask   // channel: [ meta, merged_mask.ome.zarr ]
-    versions = ch_versions                     // channel: [ versions.yml ]
+    mask     = ch_mask_ready   // channel: [ meta, merged_mask.ome.zarr ]
+    versions = ch_versions     // channel: [ versions.yml ]
 }
