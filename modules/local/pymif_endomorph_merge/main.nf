@@ -1,34 +1,21 @@
 process PYMIF_ENDOMORPH_MERGE {
     label 'process_low'
-    container 'ghcr.io/grinic/pymif:2026.9.1'
+
+    publishDir { merged_dir }, mode: 'copy'
 
     input:
-    path cells_csvs, stageAs: 'cells/*'
-    path summary_csvs, stageAs: 'summaries/*'
-    val output_cells
-    val output_summary
+    path cells_csvs, stageAs: 'cells/?/*'
+    path summary_csvs, stageAs: 'summaries/?/*'
+    val merged_dir
 
     output:
-    path "versions.yml", emit: versions
+    path "endomorph_cells_merged.csv"
+    path "endomorph_summary_merged.csv"
 
     script:
-    def shellQuote = { value ->
-        "'${value.toString().replace("'", "'\"'\"'")}'"
-    }
-
+    // Keep the header of the first file only, then append every data row.
     """
-    mkdir -p \$(dirname ${shellQuote(output_cells)})
-    mkdir -p \$(dirname ${shellQuote(output_summary)})
-
-    merge_endomorph_csvs.py \
-        --cells cells/* \
-        --summaries summaries/* \
-        --output-cells ${shellQuote(output_cells)} \
-        --output-summary ${shellQuote(output_summary)}
-
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        pandas: \$(python -c 'import pandas; print(pandas.__version__)' 2>/dev/null || echo "unknown")
-    END_VERSIONS
+    awk 'FNR > 1 || NR == 1' cells/*/* > endomorph_cells_merged.csv
+    awk 'FNR > 1 || NR == 1' summaries/*/* > endomorph_summary_merged.csv
     """
 }

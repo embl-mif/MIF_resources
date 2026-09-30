@@ -342,8 +342,7 @@ workflow {
     PYMIF_ENDOMORPH_MERGE(
         PYMIF_ENDOMORPH_FEATURES.out.csv.map { meta, cells, summary -> cells }.collect(),
         PYMIF_ENDOMORPH_FEATURES.out.csv.map { meta, cells, summary -> summary }.collect(),
-        "${merged_dir}/endomorph_cells_merged.csv",
-        "${merged_dir}/endomorph_summary_merged.csv"
+        merged_dir
     )
 
 }
