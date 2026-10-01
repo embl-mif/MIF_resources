@@ -222,18 +222,35 @@ def main():
 
     t_index_int = intensity_axes.index("t") if "t" in intensity_axes else None
     t_index_lbl = labels_axes.index("t") if "t" in labels_axes else None
-    if (t_index_int is not None) != (t_index_lbl is not None):
+    # A singleton T axis on the intensity image is dropped when labels have none.
+    squeeze_int_t = (
+        t_index_int is not None
+        and t_index_lbl is None
+        and intensity_data.shape[t_index_int] == 1
+    )
+    if squeeze_int_t:
+        print(f"Dropping singleton T axis from intensity image (axes={intensity_axes})")
+    elif (t_index_int is not None) != (t_index_lbl is not None):
         raise ValueError(
             "Intensity and labels disagree on whether a time axis is present "
             f"(intensity axes={intensity_axes}, labels axes={labels_axes})"
         )
-    if t_index_int is not None and intensity_data.shape[t_index_int] != labels_data.shape[t_index_lbl]:
+    if (
+        not squeeze_int_t
+        and t_index_int is not None
+        and intensity_data.shape[t_index_int] != labels_data.shape[t_index_lbl]
+    ):
         raise ValueError(
             "Intensity and labels have a different number of timepoints "
             f"({intensity_data.shape[t_index_int]} vs {labels_data.shape[t_index_lbl]})"
         )
 
-    timepoints = range(intensity_data.shape[t_index_int]) if t_index_int is not None else [None]
+    if squeeze_int_t:
+        timepoints = [None]
+        int_t_fixed = {t_index_int: 0}
+    else:
+        timepoints = range(intensity_data.shape[t_index_int]) if t_index_int is not None else [None]
+        int_t_fixed = {}
 
     frame_tables = []
 
@@ -243,7 +260,7 @@ def main():
 
         first_channel_image = extract_frame(
             intensity_data,
-            {c_index: channel_indices[0], **({t_index_int: t} if t_index_int is not None else {})},
+            {c_index: channel_indices[0], **int_t_fixed, **({t_index_int: t} if t is not None and t_index_int is not None else {})},
         )
         if label_image.shape != first_channel_image.shape:
             print(
@@ -262,7 +279,7 @@ def main():
                 if channel_idx == channel_indices[0]
                 else extract_frame(
                     intensity_data,
-                    {c_index: channel_idx, **({t_index_int: t} if t_index_int is not None else {})},
+                    {c_index: channel_idx, **int_t_fixed, **({t_index_int: t} if t is not None and t_index_int is not None else {})},
                 )
             )
             intensity_df = measure_intensity(
