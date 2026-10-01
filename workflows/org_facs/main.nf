@@ -2,7 +2,8 @@
 
 nextflow.enable.dsl = 2
 
-include { PYMIF_CONVERSION         } from '../../modules/local/pymif_conversion/main'
+include { PYMIF_CONVERSION as PYMIF_CONVERSION_INTENSITY         } from '../../modules/local/pymif_conversion/main'
+include { PYMIF_CONVERSION as PYMIF_CONVERSION_LABELS } from '../../modules/local/pymif_conversion/main'
 include { TILED_CELLPOSE_SAM_ZARR  } from '../../subworkflows/local/tiled_cellpose_sam_zarr/main'
 include { PYMIF_FEATURE_EXTRACTION } from '../../modules/local/pymif_feature_extraction/main'
 
@@ -69,7 +70,10 @@ workflow {
             def meta = row + [
                 id                 : dataset_id,
                 zarr_output_name   : resolved_zarr_output,
-                labels_output      : resolved_labels_output,
+                labels_output_final: resolved_labels_output,
+                // The subworkflow writes its merged mask to meta.labels_output. Point it at the
+                // work dir so it stays intermediate; the CSV value is kept in labels_output_final.
+                labels_output      : "${dataset_id}_merged_mask.ome.zarr",
                 features_output_name: resolved_features_output,
 
                 tile_size_x        : tile_size_x  ? tile_size_x  as int   : null,
@@ -111,9 +115,9 @@ workflow {
             tuple(meta, input_dataset)
         }
 
-    PYMIF_CONVERSION(pymif_inputs_ch)
+    PYMIF_CONVERSION_INTENSITY(pymif_inputs_ch)
 
-    ch_images = PYMIF_CONVERSION.out.zarr
+    ch_images = PYMIF_CONVERSION_INTENSITY.out.zarr
 
     TILED_CELLPOSE_SAM_ZARR(
         ch_images,
@@ -122,15 +126,41 @@ workflow {
     )
 
     TILED_CELLPOSE_SAM_ZARR.out.mask.view { meta, mask_path ->
-        "[TILED_CELLPOSE_SAM_ZARR] ${meta.id}: merged mask ready at ${mask_path}"
+        "[TILED_CELLPOSE_SAM_ZARR] ${meta.id}: intermediate merged mask ready at ${mask_path}"
     }
 
-    // Measure the converted image against the merged mask. The mask's meta is
-    // the subworkflow's own, so carry the per-row meta from the conversion.
+    // Convert the single-resolution intermediate mask into the final label OME-Zarr with
+    // pymif (zarr -> zarr), reusing the row's conversion settings (num_levels,
+    // downscale_factor, zarr_format, ...) so the pyramid matches the intensity image.
+    // Intensity-only options (channels, chunk_size, subset) don't apply to the mask.
+    labels_inputs_ch = TILED_CELLPOSE_SAM_ZARR.out.mask
+        .map { meta, mask -> tuple(meta.id, mask) }
+        .join(ch_images.map { meta, _zarr -> tuple(meta.id, meta) })
+        .map { _id, mask, meta ->
+            def labels_meta = meta + [
+                microscope      : 'zarr',
+                zarr_output_name: meta.labels_output_final,
+                chunk_size      : null,
+                channel_names   : null,
+                channel_colors  : null,
+                subset          : null,
+                scene_index     : null,
+            ]
+            tuple(labels_meta, file(mask.toString()))
+        }
+
+    PYMIF_CONVERSION_LABELS(labels_inputs_ch)
+
+    PYMIF_CONVERSION_LABELS.out.zarr.view { meta, labels_path ->
+        "[PYMIF_CONVERSION_LABELS] ${meta.id}: label OME-Zarr ready at ${labels_path}"
+    }
+
+    // Measure the converted image against the final label OME-Zarr.
     feature_inputs_ch = ch_images
         .map { meta, zarr -> tuple(meta.id, meta, zarr) }
-        .join(TILED_CELLPOSE_SAM_ZARR.out.mask.map { meta, mask -> tuple(meta.id, mask) })
+        .join(PYMIF_CONVERSION_LABELS.out.zarr.map { meta, labels -> tuple(meta.id, labels) })
         .map { _id, meta, intensity, labels -> tuple(meta, intensity, labels) }
 
     PYMIF_FEATURE_EXTRACTION(feature_inputs_ch)
+
 }

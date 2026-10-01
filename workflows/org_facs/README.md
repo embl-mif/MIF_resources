@@ -16,9 +16,11 @@ against the converted image, writing one features CSV per dataset.
 5. `FIND_TILE_NEIGHBORS` / `LOCAL_LABEL_MATCHER` – match labels between
    neighbouring tiles.
 6. `LABEL_SOLVER` – solve the label-matching graph into a global mapping.
-7. `WRITE_RELABELED_TILE` – write every tile into the merged label store.
+7. `WRITE_RELABELED_TILE` – write every tile into the merged label store (an intermediate single-resolution mask kept only in the Nextflow work dir).
 8. `CLEANUP_TILE_SCRATCH` – remove the per-tile segmentations once done.
-9. `PYMIF_FEATURE_EXTRACTION` – measure the merged mask against the converted
+9. `PYMIF_CONVERSION` (zarr → zarr) – convert the intermediate mask into a multiscale
+   label OME-Zarr with the metadata of the converted OME-Zarr (see `labels_output`).
+10. `PYMIF_FEATURE_EXTRACTION` – measure the label OME-Zarr against the converted
    OME-Zarr (`skimage.measure.regionprops`) and write a features CSV. Runs per
    dataset once its merged mask is complete.
 
@@ -35,7 +37,7 @@ One dataset per row. Required column:
 | --- | --- |
 | `dataset_id` | Identifier used in task names and default output names. Defaults to `<input basename>_<row number>`. |
 | `output` | Path of the converted OME-Zarr. Defaults to `<dataset_id>.ome.zarr` in the task work directory. |
-| `labels_output` | Path of the merged label OME-Zarr. Defaults to `<dataset_id>_merged_mask.ome.zarr` in the task work directory. |
+| `labels_output` | Path of the final label OME-Zarr (same axes, scales and pyramid as the converted image). Defaults to `<dataset_id>_merged_mask.ome.zarr` in the task work directory. |
 | `tile_size_x`, `tile_size_y`, `tile_size_z` | Tile size per axis. If omitted, derived from the store's chunk shape at `resolution_level`. |
 | `tile_overlap` | Overlap between neighbouring tiles. Defaults to `0`. |
 | `resolution_level` | Pyramid level for tiling/segmentation. Defaults to `--resolution_level` (0). |
