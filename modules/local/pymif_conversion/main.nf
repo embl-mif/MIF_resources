@@ -1,7 +1,7 @@
 process PYMIF_CONVERSION {
     tag "${meta.id}"
     label 'process_medium'
-    container 'ghcr.io/grinic/pymif:2026.9.1'
+    container 'ghcr.io/grinic/pymif:2026.10.0'
 
     input:
     tuple val(meta), path(input_dataset)
@@ -70,7 +70,8 @@ process PYMIF_CONVERSION {
         zarr_format: '--zarr_format',
         num_levels: '--num_levels',
         subset: '--subset',
-        shard_target_mb: '--shard_target_mb'
+        shard_target_mb: '--shard_target_mb',
+        num_workers: '--num_workers'
     ].each { header, option ->
         if (isPresent(meta[header])) {
             commandParts.addAll([option, shellQuote(meta[header])])
@@ -83,7 +84,8 @@ process PYMIF_CONVERSION {
         channel_colors: '--channel_colors',
         shards: '--shards'
     ].each { header, option ->
-        if (isPresent(meta[header])) {
+        // "none" is meaningful for shards (disables sharding; pymif defaults to auto).
+        if (header == 'shards' ? isPresentAllowNone(meta[header]) : isPresent(meta[header])) {
             def values = header == 'downscale_factor' ?
                 numericValues(meta[header]) :
                 channelValues(meta[header])
@@ -98,6 +100,11 @@ process PYMIF_CONVERSION {
         commandParts.add('--shard_exclude_axes')
         commandParts.addAll(channelValues(meta.shard_exclude_axes).collect { shellQuote(it) })
     }
+
+    // pymif >= 2026.10 drops singleton t/c/z axes by default. Downstream modules expect
+    // the full axis layout, so keep them unless the CSV explicitly sets drop_singleton.
+    def dropSingleton = isPresent(meta.drop_singleton) ? meta.drop_singleton.toString().trim().toLowerCase() : 'false'
+    commandParts.addAll(['--drop_singleton', shellQuote(dropSingleton)])
 
     def command = commandParts.join(' ')
 
@@ -118,7 +125,7 @@ process PYMIF_CONVERSION {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        pymif: \$(python -c 'import pymif; print(pymif.__version__)' 2>/dev/null || echo "unknown")
+        pymif: \$(python -c 'from importlib.metadata import version; print(version("pymif"))' 2>/dev/null || echo "unknown")
     END_VERSIONS
     """
 

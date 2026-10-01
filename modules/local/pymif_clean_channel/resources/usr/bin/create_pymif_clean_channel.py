@@ -194,7 +194,7 @@ def main():
     metadata["data_type"] = "intensity"
 
     output = mm.ArrayManager(output_levels, metadata)
-    output.to_zarr(str(args.output), overwrite=True)
+    output.to_zarr(str(args.output), overwrite=True, drop_singleton=False)
 
     intensity_source.close()
     labels_source.close()

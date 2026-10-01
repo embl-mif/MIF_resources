@@ -48,10 +48,12 @@ One dataset per row. Required column:
 | `shards` | `--shards` |
 | `shard_target_mb` | `--shard_target_mb` |
 | `shard_exclude_axes` | `--shard_exclude_axes` |
+| `drop_singleton` | `--drop_singleton` (default `false` in this pipeline) |
+| `num_workers` | `--num_workers` |
 
 `chunk_size` takes precedence over `max_size(MB)` when both are set. `shards`
-only applies with `zarr_format` `3` (`auto` sizes shards automatically,
-default target `64` MB via `shard_target_mb`; `shard_exclude_axes` defaults to
+is only supported with `zarr_format` `3` (default `auto`; `none` disables it),
+auto target `1024` MB via `shard_target_mb`; `shard_exclude_axes` defaults to
 `t c`, use `none` to allow every axis to merge). Paths containing commas must
 be CSV-quoted.
 

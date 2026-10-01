@@ -112,6 +112,7 @@ def main():
     output.to_zarr(
         str(args.output),
         overwrite=True,
+        drop_singleton=False,
     )
 
     source.close()

@@ -167,7 +167,7 @@ def main():
     metadata["is_label"] = True
 
     output = mm.ArrayManager(output_levels, metadata)
-    output.to_zarr(str(args.output), overwrite=True)
+    output.to_zarr(str(args.output), overwrite=True, drop_singleton=False)
 
     source.close()
 

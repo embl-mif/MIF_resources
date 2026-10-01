@@ -1,7 +1,7 @@
 process PYMIF_ENDOMORPH_FEATURES {
     tag "${meta.id}"
     label 'process_medium'
-    container 'ghcr.io/grinic/pymif:2026.9.1'
+    container 'ghcr.io/grinic/pymif:2026.10.0'
 
     input:
     tuple val(meta), path(intensity_zarr), path(labels_zarr), path(regions_zarr)
@@ -64,7 +64,7 @@ process PYMIF_ENDOMORPH_FEATURES {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        pymif: \$(python -c 'import pymif; print(pymif.__version__)' 2>/dev/null || echo "unknown")
+        pymif: \$(python -c 'from importlib.metadata import version; print(version("pymif"))' 2>/dev/null || echo "unknown")
     END_VERSIONS
     """
 }

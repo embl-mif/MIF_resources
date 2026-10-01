@@ -1,7 +1,7 @@
 process PYMIF_OTSU_LABEL {
     tag "${meta.id}"
     label 'process_high'
-    container 'ghcr.io/grinic/pymif:2026.9.1'
+    container 'ghcr.io/grinic/pymif:2026.10.0'
 
     input:
     tuple val(meta), path(input_zarr)
@@ -46,7 +46,7 @@ process PYMIF_OTSU_LABEL {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        pymif: \$(python -c 'import pymif; print(pymif.__version__)' 2>/dev/null || echo "unknown")
+        pymif: \$(python -c 'from importlib.metadata import version; print(version("pymif"))' 2>/dev/null || echo "unknown")
     END_VERSIONS
     """
 }
