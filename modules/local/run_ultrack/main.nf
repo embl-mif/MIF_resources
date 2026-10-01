@@ -31,11 +31,15 @@ process RUN_ULTRACK {
     def n_threads = task.cpus ?: 1
 
     // Each of labels/foreground/contours/raw is independently optional -- a
-    // caller that doesn't have one passes the NO_FILE sentinel as its local
-    // path and null/'' as its uri (same convention as CELLPOSE_SAM_ZARR_MIF's
-    // model input). Resolving back to plain labels_zarr/foreground_zarr/etc.
-    // here keeps every arg line below completely unchanged.
-    def resolveZarr = { localPath, uri -> uri ?: (localPath.name != 'NO_FILE' ? localPath.toString() : null) }
+    // caller that doesn't have one passes a NO_*-prefixed sentinel as its
+    // local path (e.g. NO_LABELS_ZARR, NO_CONTOURS_ZARR -- distinct names
+    // per slot, so two simultaneously-absent slots in one call don't cause
+    // a Nextflow input-file-collision) and null/'' as its uri. Checking the
+    // 'NO_' prefix rather than an exact 'NO_FILE' match means this keeps
+    // working regardless of which specific sentinel name the caller used.
+    // Resolving back to plain labels_zarr/foreground_zarr/etc. here keeps
+    // every arg line below completely unchanged.
+    def resolveZarr = { localPath, uri -> uri ?: (!localPath.name.startsWith('NO_') ? localPath.toString() : null) }
     def labels_zarr     = resolveZarr(local_labels_zarr, labels_zarr_uri)
     def foreground_zarr = resolveZarr(local_foreground_zarr, foreground_zarr_uri)
     def contours_zarr   = resolveZarr(local_contours_zarr, contours_zarr_uri)

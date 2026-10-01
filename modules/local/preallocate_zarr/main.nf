@@ -14,6 +14,10 @@ process PREALLOCATE_ZARR {
     task.ext.when == null || task.ext.when
 
     script:
+    // Same local-or-remote split as CELLPOSE_SAM_ZARR_MIF's `image_uri ?: local_image` --
+    // keeps this module correct today (conda, no container) and ready if it ever runs in
+    // a container later, since `path(local_input_zarr)` is properly staged/bind-visible
+    // either way, unlike a raw val string would be.
     def input_zarr = input_zarr_uri ?: local_input_zarr
 
     def args = task.ext.args ?: ''
@@ -37,15 +41,25 @@ process PREALLOCATE_ZARR {
     def x_min_arg = meta.x_min != null ? "--x-min ${meta.x_min}" : ""
     def x_max_arg = meta.x_max != null ? "--x-max ${meta.x_max}" : ""
 
-    def from_tiles = tiles_csv.name != 'NO_FILE'
+    def from_tiles = !tiles_csv.name.startsWith('NO_')
 
-    def hasLocalInput = local_input_zarr.name != 'NO_FILE'
+    // local_input_zarr is always a real, non-null staged path -- either the actual local
+    // store or a NO_*-prefixed sentinel -- so presence must be checked by the sentinel
+    // naming convention, not truthiness or an exact 'NO_FILE' match, since different
+    // callers use differently-named sentinels for this slot (NO_FILE, NO_RAW_IMAGE, etc.)
+    // to avoid Nextflow input-file-collision errors when multiple path slots in one call
+    // are simultaneously absent.
+    def hasLocalInput = !local_input_zarr.name.startsWith('NO_')
     if (!input_zarr_uri && !hasLocalInput) {
         error "PREALLOCATE_ZARR (${meta.id}): input_zarr (the original OME-Zarr image) is required."
     }
 
     // A `path` output must live in the work dir: an absolute output is exposed there as a
     // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
+    // NOTE: no `def` here -- a `def`-scoped variable is invisible to the output: block's
+    // own evaluation, so path(output_zarr_link) would look for a literal file named
+    // "output_zarr_link" instead of resolving to this value (see PYMIF_CONVERSION for
+    // the same pattern done correctly).
     output_zarr_link = new File(output_zarr.toString()).name
 
     def command
