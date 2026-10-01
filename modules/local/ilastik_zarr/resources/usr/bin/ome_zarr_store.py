@@ -43,7 +43,7 @@ def detect_ome_version(root):
 
     Returns
     -------
-    str
+OMEZarrMetadata(src_group)    str
         "0.4" or "0.5"
     """
 
@@ -319,8 +319,10 @@ class OMEZarrMetadata:
         raise RuntimeError(f"Unsupported NGFF version: {self.ome_version}")
 
     def _parse_ngff04(self):
-
-        ms = self.root.attrs["multiscales"][0]
+        attrs = self.root.attrs
+        ome = attrs.get("ome")
+        ms_root = ome if isinstance(ome, dict) and "multiscales" in ome else attrs
+        ms = ms_root["multiscales"][0]
 
         self.axes = ms["axes"]
         self.downsample_method = ms.get("type", "Average")
