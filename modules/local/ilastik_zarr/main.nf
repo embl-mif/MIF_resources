@@ -12,17 +12,24 @@ process ILASTIK_ZARR {
     container "docker.io/biocontainers/ilastik:1.4.2_cv1"
 
     input:
-    tuple val(meta), val(input_zarr), val(master_output_zarr)
+    tuple val(meta), path(local_input_zarr), val(input_zarr_uri), path(master_output_zarr)
     path  project
 
     output:
-    tuple val(meta), val(master_output_zarr),  emit: zarr
+    tuple val(meta), path(master_output_zarr), emit: zarr
     path "versions.yml"                      , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
+    def input_zarr = input_zarr_uri ?: local_input_zarr
+
+    def hasLocalInput = local_input_zarr.name != 'NO_FILE'
+    if (!input_zarr_uri && !hasLocalInput) {
+        error "ILASTIK_ZARR (${meta.id}): input_zarr (the original OME-Zarr image) is required."
+    }
+
     def args    = task.ext.args ?: ''
     def prefix  = task.ext.prefix ?: "${meta.id}"
 

@@ -6,10 +6,6 @@ include { PYMIF_CONVERSION         } from '../../modules/local/pymif_conversion/
 include { TILED_CELLPOSE_SAM_ZARR  } from '../../subworkflows/local/tiled_cellpose_sam_zarr/main'
 
 workflow {
-    // Pipeline-wide, not per-image -- label_offset_step must be large enough
-    // that no two tiles' own label IDs can collide once offset (tile_index *
-    // label_offset_step), and multicut_beta is LABEL_SOLVER's own edge-cut
-    // trade-off parameter (label_solver.py itself defaults to 0.5 if omitted).
     def label_offset_step = params.label_offset_step ?: 100000
     def multicut_beta     = params.multicut_beta     ?: 0.5
 
@@ -23,10 +19,6 @@ workflow {
         .map { row ->
             def index = row_index.getAndIncrement()
 
-            // A relative `input` value is resolved against the CSV's own
-            // directory (not wherever Nextflow was launched from) -- see
-            // Utils.resolvePath. Already returns an absolute, existence-
-            // checked Path for the local-file case.
             def input_dataset = Utils.resolvePath(row.input, params.input_csv)
 
             def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
@@ -57,13 +49,8 @@ workflow {
             def do_3D_text  = Utils.normalizeOptionalText(row.do_3D)
             def do_3D_value = do_3D_text ? do_3D_text.equalsIgnoreCase('true') : false
 
-            // Whole-workflow policy: an output column left blank in the CSV
-            // defaults to a bare relative filename, so it simply lives in
-            // (and is cleaned up along with) the task's own work directory --
-            // nothing is written to persistent/shared storage unless the CSV
-            // explicitly gives an absolute path for that column.
             def resolved_zarr_output = Utils.resolveOutput(row, 'output', "${dataset_id}.ome.zarr", dataset_id)
-            def resolved_labels_output = Utils.resolveOutput(row, 'labels_output', "${dataset_id}_merged_mask.ome.zarr", dataset_id)
+            def resolved_labels_output = Utils.resolveOutput(row, 'labels_output', "${dataset_id}_merged_labels.ome.zarr", dataset_id)
 
             def meta = row + [
                 id                 : dataset_id,
@@ -108,7 +95,7 @@ workflow {
         multicut_beta,
     )
 
-    TILED_CELLPOSE_SAM_ZARR.out.mask.view { meta, mask_path ->
-        "[TILED_CELLPOSE_SAM_ZARR] ${meta.id}: merged mask ready at ${mask_path}"
+    TILED_CELLPOSE_SAM_ZARR.out.labels.view { meta, labels_path ->
+        "[TILED_CELLPOSE_SAM_ZARR] ${meta.id}: merged labels ready at ${meta.labels_output ?: labels_path}"
     }
 }

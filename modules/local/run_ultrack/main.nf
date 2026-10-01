@@ -5,11 +5,16 @@ process RUN_ULTRACK {
     container "docker.io/royerlab/ultrack:0.6.1-cuda12.4"
 
     input:
-    tuple val(meta), val(labels_zarr), val(foreground_zarr), val(contours_zarr), val(raw_zarr), val(output_tracked_zarr)
+    tuple val(meta),
+          path(local_labels_zarr),     val(labels_zarr_uri),
+          path(local_foreground_zarr), val(foreground_zarr_uri),
+          path(local_contours_zarr),   val(contours_zarr_uri),
+          path(local_raw_zarr),        val(raw_zarr_uri),
+          path(output_tracked_zarr)
     path  config_toml
 
     output:
-    tuple val(meta), val(output_tracked_zarr),  emit: tracked_zarr
+    tuple val(meta), path(output_tracked_zarr), emit: tracked_zarr
     tuple val(meta), path(output_tracks_csv),   emit: tracks
     tuple val(meta), path(output_graph),        emit: graph
     path "versions.yml",                        emit: versions
@@ -19,10 +24,27 @@ process RUN_ULTRACK {
 
     script:
     def args = task.ext.args ?: ''
-    output_tracks_csv   = "${meta.id}_tracks.csv"
-    output_graph          = "${meta.id}_graph.npy"
+    output_tracks_csv = "${meta.id}_tracks.csv"
+    output_graph      = "${meta.id}_graph.npy"
+
     def working_dir = "${meta.id}_ultrack_db"
     def n_threads = task.cpus ?: 1
+
+    // Each of labels/foreground/contours/raw is independently optional -- a
+    // caller that doesn't have one passes a NO_*-prefixed sentinel as its
+    // local path (e.g. NO_LABELS_ZARR, NO_CONTOURS_ZARR -- distinct names
+    // per slot, so two simultaneously-absent slots in one call don't cause
+    // a Nextflow input-file-collision) and null/'' as its uri. Checking the
+    // 'NO_' prefix rather than an exact 'NO_FILE' match means this keeps
+    // working regardless of which specific sentinel name the caller used.
+    // Resolving back to plain labels_zarr/foreground_zarr/etc. here keeps
+    // every arg line below completely unchanged.
+    def resolveZarr = { localPath, uri -> uri ?: (!localPath.name.startsWith('NO_') ? localPath.toString() : null) }
+    def labels_zarr     = resolveZarr(local_labels_zarr, labels_zarr_uri)
+    def foreground_zarr = resolveZarr(local_foreground_zarr, foreground_zarr_uri)
+    def contours_zarr   = resolveZarr(local_contours_zarr, contours_zarr_uri)
+    def raw_zarr         = resolveZarr(local_raw_zarr, raw_zarr_uri)
+
     def t_min_arg = meta.t_min != null ? "--t-min ${meta.t_min}" : ""
     def t_max_arg = meta.t_max != null ? "--t-max ${meta.t_max}" : ""
     def config_arg     = config_toml ? "--config-toml ${config_toml}" : ""

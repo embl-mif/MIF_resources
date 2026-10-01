@@ -6,16 +6,15 @@ include { POPULATE_PYRAMID        } from '../../../modules/local/populate_pyrami
 workflow ILASTIK_ZARR_PIPELINE {
 
     take:
-    ilastik_input_ch   // channel: [ meta, raw_zarr, output_zarr ]
-                        //   -- one entry per tile (tiled case)
-                        //   -- or one entry per whole dataset (non-tiled case)
-    ch_project          // Channel.value(path(ilp))
+    ilastik_input_ch
+    ch_project
 
     main:
     ch_versions = Channel.empty()
 
     def repoRootDir = workflow.projectDir.getParent().getParent()
-    def noTilesCsv  = file("${repoRootDir}/assets/NO_FILE")
+    def noTilesCsv      = file("${repoRootDir}/assets/NO_TILES_CSV")
+    def noImageSentinel = file("${repoRootDir}/assets/NO_FILE")
 
     EXTRACT_ILASTIK_CLASSES(ch_project)
     ch_versions = ch_versions.mix(EXTRACT_ILASTIK_CLASSES.out.versions)
@@ -23,9 +22,15 @@ workflow ILASTIK_ZARR_PIPELINE {
     ch_channel_info = EXTRACT_ILASTIK_CLASSES.out.classes
         .map { json -> new groovy.json.JsonSlurper().parseText(json.text) }
 
-    ch_prealloc_input = ilastik_input_ch
+    ch_split_ilastik_input = ilastik_input_ch
+        .map { meta, raw_zarr, output_zarr ->
+            def (localRawZarr, rawZarrUri) = Utils.splitImageInput(raw_zarr, noImageSentinel)
+            tuple(meta, localRawZarr, rawZarrUri, output_zarr)
+        }
+
+    ch_prealloc_input = ch_split_ilastik_input
         .combine(ch_channel_info)
-        .map { meta, raw_zarr, output_zarr, channelInfo ->
+        .map { meta, localRawZarr, rawZarrUri, output_zarr, channelInfo ->
             def prealloc_meta = meta.clone()
             prealloc_meta.num_channels   = channelInfo.num_channels
             prealloc_meta.channel_labels = channelInfo.channel_labels
@@ -38,29 +43,31 @@ workflow ILASTIK_ZARR_PIPELINE {
             prealloc_meta.y_max = null
             prealloc_meta.x_min = null
             prealloc_meta.x_max = null
-            tuple(prealloc_meta, raw_zarr, output_zarr)
+            prealloc_meta.output_zarr_key = output_zarr
+            tuple(prealloc_meta, localRawZarr, rawZarrUri, output_zarr)
         }
 
     ch_prealloc_unique = ch_prealloc_input
-        .map { meta, raw_zarr, output_zarr -> tuple(output_zarr, meta, raw_zarr) }
+        .map { meta, localRawZarr, rawZarrUri, output_zarr -> tuple(output_zarr, meta, localRawZarr, rawZarrUri) }
         .unique { it[0] }
-        .map { output_zarr, meta, raw_zarr -> tuple(meta, raw_zarr, noTilesCsv, output_zarr) }
+        .map { output_zarr, meta, localRawZarr, rawZarrUri -> tuple(meta, localRawZarr, rawZarrUri, noTilesCsv, output_zarr) }
 
     PREALLOCATE_ZARR(ch_prealloc_unique)
     ch_versions = ch_versions.mix(PREALLOCATE_ZARR.out.versions)
 
-    ch_ilastik_ready = ilastik_input_ch
-        .map { meta, raw_zarr, output_zarr -> tuple(output_zarr, meta, raw_zarr) }
+    ch_ilastik_ready = ch_split_ilastik_input
+        .map { meta, localRawZarr, rawZarrUri, output_zarr -> tuple(output_zarr, meta, localRawZarr, rawZarrUri) }
         .combine(
-            PREALLOCATE_ZARR.out.zarr.map { m, zarr -> tuple(zarr, true) },
+            PREALLOCATE_ZARR.out.zarr.map { m, zarr -> tuple(m.output_zarr_key, zarr) },
             by: 0
         )
-        .map { output_zarr, meta, raw_zarr, ready -> tuple(meta, raw_zarr, output_zarr) }
+        .map { output_zarr, meta, localRawZarr, rawZarrUri, prealloc_zarr ->
+            tuple(meta, localRawZarr, rawZarrUri, prealloc_zarr)
+        }
 
     ILASTIK_ZARR(ch_ilastik_ready, ch_project)
     ch_versions = ch_versions.mix(ILASTIK_ZARR.out.versions)
 
-    // Group per dataset (meta.id) so pyramid rebuild waits for every tile
     ch_ready_for_pyramid = ILASTIK_ZARR.out.zarr
         .map { meta, output_zarr -> tuple(meta.id, meta, output_zarr) }
         .groupTuple(by: 0)

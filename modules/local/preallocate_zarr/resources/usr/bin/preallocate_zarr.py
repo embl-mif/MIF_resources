@@ -285,16 +285,17 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
         channel_count = num_channels if num_channels is not None else shapes[0][output_axis_names.index("c")]
         new_ome_attrs["omero"] = {"channels": _omero_channels(channel_count, channel_labels, dtype)}
 
-    # Nest under "ome" for the OUTPUT's own version/format -- independent of
-    # how the input happened to store it, since --zarr-format can convert
-    # between v2 and v3.
+    # Always write multiscales/omero flat at the attrs root, regardless of
+    # output zarr_format. This is NOT the real NGFF spec (which nests under
+    # "ome" for zarr v3) -- it matches squirrel's own OMEZarrMetadata reader/
+    # writer instead, which downstream tools in this pipeline (e.g.
+    # populate_pyramid.py, via squirrel.OMEZarrStore) actually rely on:
+    # squirrel's detect_ome_version() only ever checks attrs["multiscales"]
+    # directly and never looks for a nested "ome" key, even for zarr v3.
     zattrs.pop("multiscales", None)
     zattrs.pop("omero", None)
     zattrs.pop("ome", None)
-    if zarr_format == 3:
-        zattrs["ome"] = new_ome_attrs
-    else:
-        zattrs.update(new_ome_attrs)
+    zattrs.update(new_ome_attrs)
 
     dest_root.attrs.update(zattrs)
 
