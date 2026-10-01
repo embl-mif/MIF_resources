@@ -73,7 +73,6 @@ workflow {
                 labels_output_final: resolved_labels_output,
                 // The subworkflow writes its merged mask to meta.labels_output. Point it at the
                 // work dir so it stays intermediate; the CSV value is kept in labels_output_final.
-                labels_output      : "${dataset_id}_merged_mask.ome.zarr",
                 features_output_name: resolved_features_output,
 
                 tile_size_x        : tile_size_x  ? tile_size_x  as int   : null,
