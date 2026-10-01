@@ -10,14 +10,14 @@ process RUN_ULTRACK {
           path(local_foreground_zarr), val(foreground_zarr_uri),
           path(local_contours_zarr),   val(contours_zarr_uri),
           path(local_raw_zarr),        val(raw_zarr_uri),
-          val(output_tracked_zarr)
+          path(output_tracked_zarr)
     path  config_toml
 
     output:
-    tuple val(meta), path(output_tracked_zarr_link), emit: tracked_zarr
-    tuple val(meta), path(output_tracks_csv),         emit: tracks
-    tuple val(meta), path(output_graph),              emit: graph
-    path "versions.yml",                              emit: versions
+    tuple val(meta), path(output_tracked_zarr), emit: tracked_zarr
+    tuple val(meta), path(output_tracks_csv),   emit: tracks
+    tuple val(meta), path(output_graph),        emit: graph
+    path "versions.yml",                        emit: versions
 
     when:
     task.ext.when == null || task.ext.when
@@ -26,12 +26,6 @@ process RUN_ULTRACK {
     def args = task.ext.args ?: ''
     output_tracks_csv = "${meta.id}_tracks.csv"
     output_graph      = "${meta.id}_graph.npy"
-    // A `path` output must live in the work dir: an absolute output is exposed there as a
-    // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
-    // NOTE: no `def` -- a def-scoped variable is invisible to the output: block's own
-    // evaluation, so path(output_tracked_zarr_link) would look for a literal file named
-    // "output_tracked_zarr_link" instead of resolving to this value.
-    output_tracked_zarr_link = new File(output_tracked_zarr.toString()).name
 
     def working_dir = "${meta.id}_ultrack_db"
     def n_threads = task.cpus ?: 1
@@ -95,8 +89,6 @@ process RUN_ULTRACK {
         ${scale_y_arg} \\
         ${scale_x_arg} \\
         ${args}
-
-    ${Utils.shellLinkOutput(output_tracked_zarr)}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
