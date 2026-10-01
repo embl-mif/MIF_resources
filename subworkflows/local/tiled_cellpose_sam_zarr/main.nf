@@ -10,10 +10,9 @@ include { WRITE_RELABELED_TILE  } from '../../../modules/local/write_relabeled_t
 workflow TILED_CELLPOSE_SAM_ZARR {
 
     take:
-    ch_images              // channel: [ meta, image_path ] -- meta already carries
-                           // per-image segmentation_channels/halo/use_physical_units
-    val_label_offset_step  // integer: per-tile global label-id offset step
-    val_multicut_beta      // float:   LABEL_SOLVER multicut beta parameter
+    ch_images
+    val_label_offset_step
+    val_multicut_beta
 
     main:
 
@@ -23,12 +22,6 @@ workflow TILED_CELLPOSE_SAM_ZARR {
     def noNeighborZarr  = file("${repoRootDir}/assets/NO_FILE")
     def noImageSentinel = file("${repoRootDir}/assets/NO_FILE")
 
-    // Labels are unique per-cell integers -- any averaging/interpolating
-    // downsample method would blend adjacent IDs into meaningless values.
-    // populate_pyramid.py only accepts 'Average' or 'Sample' -- 'Sample'
-    // (stride sampling) is the one that guarantees every downsampled pixel
-    // is still a real label that existed in the source, so it's hardcoded
-    // here rather than exposed as a workflow parameter.
     def labelDownsampleMethod = 'Sample'
 
     ch_split_images = ch_images.map { meta, image ->
@@ -36,28 +29,14 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         tuple(meta.id, meta, image, localImage, imageUri)
     }
 
-    // Pass the already-split local/uri pair straight through -- .toString()
-    // on localImage here would be unreliable, since it's a Path taken from
-    // an upstream process's own `path` output (PYMIF_CONVERSION.out.zarr),
-    // and only resolves correctly when re-staged via a proper `path` input
-    // declaration on the receiving process, not when flattened to a string.
     TILE_CONSTRUCTOR( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(meta, localImage, imageUri) } )
 
     ch_merged_zarr_input = TILE_CONSTRUCTOR.out.tiles
         .map { parentMeta, tileCsv -> tuple(parentMeta.id, tileCsv) }
         .join( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(id, meta, localImage, imageUri) } )
         .map { srcId, tileCsv, parentMeta, localImage, imageUri ->
-            // No output dir is required here anymore: same whole-workflow
-            // policy as the entry-point workflow's own defaults -- when the
-            // caller hasn't set meta.labels_output, this falls back to a
-            // bare relative filename (work dir), not a forced absolute
-            // shared-storage location.
-            def mergedOutputZarr = Utils.resolveOutput(parentMeta, 'labels_output', "${srcId}_merged_mask.ome.zarr", srcId)
-            def mergedMeta = [id: srcId, dtype: 'uint32', data_type: 'label']
-            // localImage/imageUri passed through as-is (already split by
-            // Utils.splitImageInput in ch_split_images) -- PREALLOCATE_ZARR
-            // takes the same path(local)/val(uri) pair CELLPOSE_SAM_ZARR_MIF
-            // does, rather than a single pre-collapsed string.
+            def mergedOutputZarr = Utils.resolveOutput(parentMeta, 'labels_output', "${srcId}_merged_labels.ome.zarr", srcId)
+            def mergedMeta = [id: srcId, dtype: 'uint32', data_type: 'label', labels_output: mergedOutputZarr]
             tuple(mergedMeta, localImage, imageUri, tileCsv, mergedOutputZarr)
         }
 
@@ -122,7 +101,6 @@ workflow TILED_CELLPOSE_SAM_ZARR {
 
     FIND_TILE_NEIGHBORS(ch_tile_neighbors_input)
 
-    // dataset_id -> label path, for resolving neighbor labels below.
     ch_label_path_by_id = ch_all_labels
         .map { meta, label -> tuple(meta.id, label) }
         .toList()
@@ -192,17 +170,17 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .map { meta, confirmation -> tuple(meta.source_dataset_id, confirmation) }
         .groupTuple(by: 0)
 
-    ch_mask_ready = PREALLOCATE_ZARR.out.zarr
+    ch_labels_ready = PREALLOCATE_ZARR.out.zarr
         .map { meta, store -> tuple(meta.id, meta, store) }
         .join( ch_write_confirmed )
         .map { _srcId, meta, store, _confirmations -> tuple(meta, store) }
 
     POPULATE_PYRAMID(
-        ch_mask_ready.map { meta, store -> tuple(meta, store, labelDownsampleMethod) }
+        ch_labels_ready.map { meta, store -> tuple(meta, store, labelDownsampleMethod) }
     )
     ch_versions = ch_versions.mix(POPULATE_PYRAMID.out.versions)
 
     emit:
-    mask     = POPULATE_PYRAMID.out.zarr   // channel: [ meta, merged_mask.ome.zarr (all pyramid levels populated) ]
-    versions = ch_versions                 // channel: [ versions.yml ]
+    labels   = POPULATE_PYRAMID.out.zarr
+    versions = ch_versions
 }
