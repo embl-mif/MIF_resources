@@ -59,7 +59,7 @@ workflow {
             def do_3D_value = do_3D_text ? do_3D_text.equalsIgnoreCase('true') : false
 
             def resolved_zarr_output = Utils.resolveOutput(row, 'output', "${dataset_id}.ome.zarr", dataset_id)
-            def resolved_labels_output = Utils.resolveOutput(row, 'labels_output', "${dataset_id}_merged_mask.ome.zarr", dataset_id)
+            def resolved_labels_output = Utils.resolveOutput(row, 'labels_output_final', "${dataset_id}_merged_mask.ome.zarr", dataset_id)
 
             // Feature extraction parameters
             def intensity_resolution_level = Utils.normalizeOptionalText(row.intensity_resolution_level)
