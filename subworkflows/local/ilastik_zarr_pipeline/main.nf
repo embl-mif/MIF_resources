@@ -6,16 +6,14 @@ include { POPULATE_PYRAMID        } from '../../../modules/local/populate_pyrami
 workflow ILASTIK_ZARR_PIPELINE {
 
     take:
-    ilastik_input_ch   // channel: [ meta, raw_zarr, output_zarr ]
-                        //   -- one entry per tile (tiled case)
-                        //   -- or one entry per whole dataset (non-tiled case)
-    ch_project          // Channel.value(path(ilp))
+    ilastik_input_ch
+    ch_project
 
     main:
     ch_versions = Channel.empty()
 
     def repoRootDir = workflow.projectDir.getParent().getParent()
-    def noTilesCsv      = file("${repoRootDir}/assets/NO_FILE")
+    def noTilesCsv      = file("${repoRootDir}/assets/NO_TILES_CSV")
     def noImageSentinel = file("${repoRootDir}/assets/NO_FILE")
 
     EXTRACT_ILASTIK_CLASSES(ch_project)
@@ -24,8 +22,6 @@ workflow ILASTIK_ZARR_PIPELINE {
     ch_channel_info = EXTRACT_ILASTIK_CLASSES.out.classes
         .map { json -> new groovy.json.JsonSlurper().parseText(json.text) }
 
-    // raw_zarr can be a local file or a remote URI -- split once so every
-    // downstream process gets the path(local)/val(uri) pair it needs.
     ch_split_ilastik_input = ilastik_input_ch
         .map { meta, raw_zarr, output_zarr ->
             def (localRawZarr, rawZarrUri) = Utils.splitImageInput(raw_zarr, noImageSentinel)
@@ -72,8 +68,6 @@ workflow ILASTIK_ZARR_PIPELINE {
     ILASTIK_ZARR(ch_ilastik_ready, ch_project)
     ch_versions = ch_versions.mix(ILASTIK_ZARR.out.versions)
 
-    // Group per dataset (meta.id) so pyramid rebuild waits for every tile.
-    // Probabilities are continuous float values, not label IDs, so "Average"
     ch_ready_for_pyramid = ILASTIK_ZARR.out.zarr
         .map { meta, output_zarr -> tuple(meta.id, meta, output_zarr) }
         .groupTuple(by: 0)
