@@ -26,7 +26,7 @@ workflow {
         .map { row ->
             def index = row_index.getAndIncrement()
 
-            def input_dataset = Utils.resolvePath(row.input, params.input_csv)
+            def input_dataset = file(row.input, checkIfExists: true)
 
             def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
                 ?: "${input_dataset.simpleName}_${index + 1}"
