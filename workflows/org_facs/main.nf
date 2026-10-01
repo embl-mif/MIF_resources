@@ -124,7 +124,7 @@ workflow {
         multicut_beta,
     )
 
-    TILED_CELLPOSE_SAM_ZARR.out.mask.view { meta, mask_path ->
+    TILED_CELLPOSE_SAM_ZARR.out.labels.view { meta, mask_path ->
         "[TILED_CELLPOSE_SAM_ZARR] ${meta.id}: intermediate merged mask ready at ${mask_path}"
     }
 
@@ -132,7 +132,7 @@ workflow {
     // pymif (zarr -> zarr), reusing the row's conversion settings (num_levels,
     // downscale_factor, zarr_format, ...) so the pyramid matches the intensity image.
     // Intensity-only options (channels, chunk_size, subset) don't apply to the mask.
-    labels_inputs_ch = TILED_CELLPOSE_SAM_ZARR.out.mask
+    labels_inputs_ch = TILED_CELLPOSE_SAM_ZARR.out.labels
         .map { meta, mask -> tuple(meta.id, mask) }
         .join(ch_images.map { meta, _zarr -> tuple(meta.id, meta) })
         .map { _id, mask, meta ->
