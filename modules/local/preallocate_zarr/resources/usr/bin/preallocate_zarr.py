@@ -270,10 +270,19 @@ def _build_from_input(output_path: str, dtype: str, input_path: str,
             transforms.append({"type": "translation", "translation": list(level_translation)})
         new_datasets.append({"path": path_name, "coordinateTransformations": transforms})
 
+    # Carry each axis' unit over from the source so the output keeps the same physical units.
+    source_units = {axis["name"]: axis.get("unit") for axis in md.axes}
+    output_axes = []
+    for name in output_axis_names:
+        axis_entry = {"name": name, "type": _axis_type(name)}
+        if source_units.get(name):
+            axis_entry["unit"] = source_units[name]
+        output_axes.append(axis_entry)
+
     new_ms = {
         "version": ome_version,
         "name": "/",
-        "axes": [{"name": name, "type": _axis_type(name)} for name in output_axis_names],
+        "axes": output_axes,
         "datasets": new_datasets,
         "type": md.downsample_method,
     }
