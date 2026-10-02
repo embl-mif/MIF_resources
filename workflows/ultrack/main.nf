@@ -26,7 +26,10 @@ workflow {
         solution_gap         : 0.1,
         time_limit           : 600,
     ]
-    ch_ultrack_input = Channel.of([ meta, params.probabilities_zarr, params.input_zarr ])
+    def probabilities_zarr = file(params.probabilities_zarr, checkIfExists: true)
+    def input_zarr_file    = file(params.input_zarr, checkIfExists: true)
+
+    ch_ultrack_input = Channel.of([ meta, probabilities_zarr, input_zarr_file ])
     val_config_toml   = params.ultrack_config ? Channel.value(file(params.ultrack_config)) : Channel.value([])
 
     ULTRACK_ZARR_PIPELINE(ch_ultrack_input, val_config_toml)
