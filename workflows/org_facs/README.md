@@ -50,8 +50,8 @@ path, or blank to use the default.
 
 Convert the input into the OME-Zarr used by every later step. All columns are
 optional; unset ones are not passed to `pymif`, so its own defaults apply. The
-same `num_levels`, `downscale_factor`, `zarr_format`, `shards`, ... are reused
-when the final label OME-Zarr is built, so labels and image share the pyramid.
+same `num_levels`, `downscale_factor`, `zarr_format`, ... are reused when the final
+label OME-Zarr is built, so labels and image share the pyramid.
 
 | CSV column | Default if not set | Description |
 | --- | --- | --- |

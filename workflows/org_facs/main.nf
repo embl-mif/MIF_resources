@@ -128,10 +128,10 @@ workflow {
         "[TILED_CELLPOSE_SAM_ZARR] ${meta.id}: intermediate merged mask ready at ${mask_path}"
     }
 
-    // Convert the single-resolution intermediate mask into the final label OME-Zarr with
-    // pymif (zarr -> zarr), reusing the row's conversion settings (num_levels,
-    // downscale_factor, zarr_format, ...) so the pyramid matches the intensity image.
-    // Intensity-only options (channels, chunk_size, shards, subset) don't apply to the mask.
+    // Convert the intermediate mask into the final label OME-Zarr with pymif (zarr -> zarr),
+    // reusing the row's conversion settings (num_levels, downscale_factor, zarr_format, ...)
+    // so the pyramid matches the intensity image. Intensity-only options (channels,
+    // chunk_size, shards, subset) don't apply to the mask.
     labels_inputs_ch = TILED_CELLPOSE_SAM_ZARR.out.labels
         .map { meta, mask -> tuple(meta.id, mask) }
         .join(ch_images.map { meta, _zarr -> tuple(meta.id, meta) })
@@ -146,7 +146,7 @@ workflow {
                 subset          : null,
                 scene_index     : null,
             ]
-            tuple(labels_meta, file(mask.toString()))
+            tuple(labels_meta, mask)
         }
 
     PYMIF_CONVERSION_LABELS(labels_inputs_ch)
