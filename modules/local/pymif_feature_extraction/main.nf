@@ -11,7 +11,7 @@ process PYMIF_FEATURE_EXTRACTION {
     path "versions.yml"                   , emit: versions
 
     script:
-    output_csv = meta.features_output_name ?: "${meta.id}_features.csv"
+    output_csv = meta.csv_output ?: "${meta.id}_features.csv"
     // A `path` output must live in the work dir: an absolute output is exposed there as a
     // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
     output_csv_link = new File(output_csv.toString()).name
