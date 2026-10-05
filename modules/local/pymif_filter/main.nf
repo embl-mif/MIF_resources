@@ -1,7 +1,7 @@
 process PYMIF_FILTER {
     tag "${meta.id}"
     label 'process_high'
-    container 'ghcr.io/grinic/pymif:2026.10.0'
+    container 'ghcr.io/grinic/pymif:0.3.2'
 
     input:
     tuple val(meta), path(labels_zarr), path(csv_file)
