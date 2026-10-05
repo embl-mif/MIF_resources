@@ -217,28 +217,6 @@ class Utils {
         return "ln -sfn ${quote(text)} ${quote(new File(text).name)}"
     }
 
-    static String shellQuote(def value) {
-        return "'" + value.toString().replace("'", "'\"'\"'") + "'"
-    }
-
-    static final List BIND_OUTPUT_KEYS = ['zarr_output', 'csv_output', 'summary_csv_output']
-
-    static String bindOptions(def meta) {
-        if (!(meta instanceof Map)) {
-            return ''
-        }
-        def dirs = meta.findAll { key, value ->
-                key.toString() in BIND_OUTPUT_KEYS && value && new File(value.toString()).isAbsolute()
-            }
-            .values()
-            .collect { new File(it.toString()).parentFile }
-            .unique()
-        return dirs.collect { dir ->
-            dir.mkdirs()
-            "--bind ${shellQuote(dir.path)}:${shellQuote(dir.path)}"
-        }.join(' ')
-    }
-
     static String optionalCliArg(String flag, def value) {
         def normalized = normalizeOptionalText(value)
         return normalized != null ? "${flag} ${normalized}" : ""
