@@ -14,7 +14,7 @@ process PYMIF_CONVERSION {
     task.ext.when == null || task.ext.when
 
     script:
-    output_zarr = meta.zarr_output_name ?: "${meta.id}.ome.zarr"
+    output_zarr = meta.zarr_output ?: "${meta.id}.ome.zarr"
     // A `path` output must live in the work dir: an absolute output is exposed there as a
     // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
     output_zarr_link = new File(output_zarr.toString()).name
@@ -130,7 +130,7 @@ process PYMIF_CONVERSION {
     """
 
     stub:
-    output_zarr = meta.zarr_output_name ?: "${meta.id}.ome.zarr"
+    output_zarr = meta.zarr_output ?: "${meta.id}.ome.zarr"
     output_zarr_link = new File(output_zarr.toString()).name
     """
     mkdir -p "${output_zarr}"
