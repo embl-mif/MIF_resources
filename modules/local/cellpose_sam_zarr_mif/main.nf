@@ -74,7 +74,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     // Nextflow "input file name collision" error.
     def cellpose_model_arg = pretrained_cellpose_model.name != 'NO_MODEL_FILE' ? "-m ${pretrained_cellpose_model}" : ""
     // Use direct_output_path for untiled workflows
-    output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
+    output_zarr = meta.zarr_output ?: "${meta.id}_labels.ome.zarr"
     // A `path` output must live in the work dir: an absolute output (written directly to
     // shared storage) is exposed there as a symlink named after it (see
     // Utils.shellLinkOutput), a relative one is the output itself.
@@ -122,7 +122,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     """
 
     stub:
-    output_zarr = meta.labels_output_name ?: "${meta.id}_labels.ome.zarr"
+    output_zarr = meta.zarr_output ?: "${meta.id}_labels.ome.zarr"
     output_zarr_link = new File(output_zarr.toString()).name
     """
     mkdir -p ${output_zarr}
