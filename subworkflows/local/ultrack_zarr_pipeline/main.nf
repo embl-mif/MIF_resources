@@ -31,7 +31,8 @@ workflow ULTRACK_ZARR_PIPELINE {
             prealloc_meta.num_channels = 1
             prealloc_meta.dtype        = "int32"
             prealloc_meta.data_type    = "label"
-            tuple(prealloc_meta, localRawImage, rawImageUri, noTilesCsv, meta.output_zarr)
+            prealloc_meta.zarr_output = meta.output_zarr
+            tuple(prealloc_meta, localRawImage, rawImageUri, noTilesCsv)
         }
 
     PREALLOCATE_ZARR(ch_prealloc_input)
