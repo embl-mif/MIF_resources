@@ -44,13 +44,14 @@ workflow ILASTIK_ZARR_PIPELINE {
             prealloc_meta.x_min = null
             prealloc_meta.x_max = null
             prealloc_meta.output_zarr_key = output_zarr
+            prealloc_meta.zarr_output = output_zarr
             tuple(prealloc_meta, localRawZarr, rawZarrUri, output_zarr)
         }
 
     ch_prealloc_unique = ch_prealloc_input
         .map { meta, localRawZarr, rawZarrUri, output_zarr -> tuple(output_zarr, meta, localRawZarr, rawZarrUri) }
         .unique { it[0] }
-        .map { output_zarr, meta, localRawZarr, rawZarrUri -> tuple(meta, localRawZarr, rawZarrUri, noTilesCsv, output_zarr) }
+        .map { output_zarr, meta, localRawZarr, rawZarrUri -> tuple(meta, localRawZarr, rawZarrUri, noTilesCsv) }
 
     PREALLOCATE_ZARR(ch_prealloc_unique)
     ch_versions = ch_versions.mix(PREALLOCATE_ZARR.out.versions)
