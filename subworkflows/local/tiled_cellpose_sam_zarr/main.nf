@@ -21,7 +21,9 @@ workflow TILED_CELLPOSE_SAM_ZARR {
     def repoRootDir = workflow.projectDir.getParent().getParent()
     def noNeighborZarr  = file("${repoRootDir}/assets/NO_FILE")
     def noImageSentinel = file("${repoRootDir}/assets/NO_FILE")
-
+    def tileConstructorKeys = ['halo', 'resolution_level', 'tile_overlap', 'tile_size_x', 'tile_size_y', 'tile_size_z',
+                               'use_physical_units', 'x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max']
+    def cellposeKeys = ['diameter', 'niter', 'segmentation_channels', 'flow_threshold', 'cellprob_threshold', 'halo']
     def labelDownsampleMethod = 'Sample'
 
     ch_split_images = ch_images.map { meta, image ->
@@ -29,15 +31,15 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         tuple(meta.id, meta, image, localImage, imageUri)
     }
 
-    TILE_CONSTRUCTOR( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(meta, localImage, imageUri) } )
+    TILE_CONSTRUCTOR( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(meta.subMap(tileConstructorKeys) + [id: meta.id], localImage, imageUri) } )
 
     ch_merged_zarr_input = TILE_CONSTRUCTOR.out.tiles
         .map { parentMeta, tileCsv -> tuple(parentMeta.id, tileCsv) }
         .join( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(id, meta, localImage, imageUri) } )
         .map { srcId, tileCsv, parentMeta, localImage, imageUri ->
             def mergedOutputZarr = Utils.resolveOutput(parentMeta, 'labels_output', "${srcId}_merged_labels.ome.zarr", srcId)
-            def mergedMeta = [id: srcId, dtype: 'uint32', data_type: 'label', labels_output: mergedOutputZarr]
-            tuple(mergedMeta, localImage, imageUri, tileCsv, mergedOutputZarr)
+            def mergedMeta = [id: srcId, dtype: 'uint32', data_type: 'label', zarr_output: mergedOutputZarr]
+            tuple(mergedMeta, localImage, imageUri, tileCsv)
         }
 
     PREALLOCATE_ZARR(ch_merged_zarr_input)
@@ -48,7 +50,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
         .join( ch_split_images.map { id, meta, image, localImage, imageUri -> tuple(id, meta, image, localImage, imageUri) } )
         .flatMap { _srcId, tileCsv, parentMeta, image, localImage, imageUri ->
             tileCsv.splitCsv(header: true).collect { row ->
-                def tileMeta = parentMeta + [
+                def tileMeta = parentMeta.subMap(cellposeKeys) + [
                     id: row.dataset_id,
                     source_dataset_id: row.source_dataset_id,
                     tile_id: row.tile_id,
@@ -68,7 +70,7 @@ workflow TILED_CELLPOSE_SAM_ZARR {
                     tile_size_z: row.tile_size_z,
                     use_physical_units: false,
                     do_3D: parentMeta.do_3D ?: false,
-                    labels_output_name: "${row.dataset_id}_labels.ome.zarr",
+                    zarr_output: "${row.dataset_id}_labels.ome.zarr",
                     is_tiled: true,
                 ]
 
