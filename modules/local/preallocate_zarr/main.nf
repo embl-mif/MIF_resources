@@ -4,7 +4,7 @@ process PREALLOCATE_ZARR {
     conda "${moduleDir}/environment.yml"
 
     input:
-    tuple val(meta), path(local_input_zarr), val(input_zarr_uri), path(tiles_csv), val(output_zarr)
+    tuple val(meta), path(local_input_zarr), val(input_zarr_uri), path(tiles_csv)
 
     output:
     tuple val(meta), path(output_zarr_link), emit: zarr
@@ -14,10 +14,7 @@ process PREALLOCATE_ZARR {
     task.ext.when == null || task.ext.when
 
     script:
-    // Same local-or-remote split as CELLPOSE_SAM_ZARR_MIF's `image_uri ?: local_image` --
-    // keeps this module correct today (conda, no container) and ready if it ever runs in
-    // a container later, since `path(local_input_zarr)` is properly staged/bind-visible
-    // either way, unlike a raw val string would be.
+    output_zarr = meta.zarr_output ?: "${meta.id}.ome.zarr"
     def input_zarr = input_zarr_uri ?: local_input_zarr
 
     def args = task.ext.args ?: ''
