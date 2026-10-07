@@ -47,7 +47,7 @@ workflow {
 
             def meta = row + [
                 id                 : dataset_id,
-                output_zarr        : resolved_output_zarr,
+                zarr_output        : resolved_output_zarr,
 
                 tile_size_x        : tile_size_x  ? tile_size_x  as int   : null,
                 tile_size_y        : tile_size_y  ? tile_size_y  as int   : null,
@@ -87,7 +87,7 @@ workflow {
                 tile_meta.z_max = (row.z_max && row.z_max != '') ? row.z_max as Integer : null
                 // t_min/t_max unchanged per tile
 
-                return [ tile_meta, raw_zarr, meta.output_zarr ]
+                return [ tile_meta, raw_zarr, meta.zarr_output ]
             }
         }
     ch_project = Channel.value(file(params.ilastik_project))
