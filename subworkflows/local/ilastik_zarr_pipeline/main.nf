@@ -23,7 +23,7 @@ workflow ILASTIK_ZARR_PIPELINE {
         .map { json -> new groovy.json.JsonSlurper().parseText(json.text) }
 
     ch_split_ilastik_input = ilastik_input_ch
-        .map { meta, raw_zarr, output_zarr ->
+        .map { meta, raw_zarr, zarr_output ->
             def (localRawZarr, rawZarrUri) = Utils.splitImageInput(raw_zarr, noImageSentinel)
             tuple(meta, localRawZarr, rawZarrUri, zarr_output)
         }
