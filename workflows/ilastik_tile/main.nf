@@ -42,8 +42,7 @@ workflow {
             def t_min = Utils.normalizeOptionalText(row.t_min)
             def t_max = Utils.normalizeOptionalText(row.t_max)
 
-            def resolved_output_zarr = Utils.normalizeOptionalText(row.pixel_class_output)
-                ?: "${pixel_class_dir}/${dataset_id}_pixel_class.zarr"
+            def resolved_output_zarr = Utils.resolveOutput(row, 'pixel_class_output', "${pixel_class_dir}/${dataset_id}_pixel_class.zarr", dataset_id)
 
             def meta = row + [
                 id                 : dataset_id,
