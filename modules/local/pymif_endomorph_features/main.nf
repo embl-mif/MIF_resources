@@ -11,8 +11,8 @@ process PYMIF_ENDOMORPH_FEATURES {
     path "versions.yml"                                                  , emit: versions
 
     script:
-    output_csv = meta.endomorph_cells_output_name ?: "${meta.id}_endomorph_cells.csv"
-    output_summary_csv = meta.endomorph_summary_output_name ?: "${meta.id}_endomorph_summary.csv"
+    output_csv = meta.csv_output ?: "${meta.id}_endomorph_cells.csv"
+    output_summary_csv = meta.summary_csv_output ?: "${meta.id}_endomorph_summary.csv"
     // A `path` output must live in the work dir: an absolute output is exposed there as a
     // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
     output_csv_link = new File(output_csv.toString()).name

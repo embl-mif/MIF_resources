@@ -12,6 +12,6 @@ Builds one label OME-Zarr with, for every cell not touching the image border, N 
 ## Output
 | Name | Type | Description |
 | --- | --- | --- |
-| `zarr` | `tuple(meta, regions_zarr)` | Regions label zarr (`meta.endomorph_regions_output_name`) |
+| `zarr` | `tuple(meta, regions_zarr)` | Regions label zarr (`meta.zarr_output`) |
 | `qc` | `tuple(meta, json)` | QC diagnostics of the empty-area estimation (work dir, not used downstream) |
 | `versions` | path | `versions.yml` |

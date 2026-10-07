@@ -5,12 +5,12 @@ Zeroes one channel of an intensity OME-Zarr outside the labelled objects and app
 ## Input
 | Name | Type | Description |
 | --- | --- | --- |
-| `meta` | val | Sample map (`id`, `clean_channel`, `clean_output_name`) |
+| `meta` | val | Sample map (`id`, `clean_channel`, `zarr_output`) |
 | `intensity_zarr` | path | Intensity OME-Zarr (e.g. the MIP) |
 | `labels_zarr` | path | Label OME-Zarr (e.g. filtered seed labels) |
 
 ## Output
 | Name | Type | Description |
 | --- | --- | --- |
-| `zarr` | `tuple(meta, zarr)` | OME-Zarr with the extra clean channel (`meta.clean_output_name`) |
+| `zarr` | `tuple(meta, zarr)` | OME-Zarr with the extra clean channel (`meta.zarr_output`) |
 | `versions` | path | `versions.yml` |

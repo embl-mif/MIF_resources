@@ -11,7 +11,7 @@ process PYMIF_OTSU_LABEL {
     path "versions.yml"                      , emit: versions
 
     script:
-    output_labels = meta.otsu_output_name ?: "${meta.id}_otsu_labels.ome.zarr"
+    output_labels = meta.zarr_output ?: "${meta.id}_otsu_labels.ome.zarr"
     // A `path` output must live in the work dir: an absolute output is exposed there as a
     // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
     output_labels_link = new File(output_labels.toString()).name

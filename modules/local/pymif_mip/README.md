@@ -5,11 +5,11 @@ Creates a multiscale OME-Zarr holding the maximum-intensity projection over Z of
 ## Input
 | Name | Type | Description |
 | --- | --- | --- |
-| `meta` | val | Sample map (`id`, `mip_output_name`) |
+| `meta` | val | Sample map (`id`, `zarr_output`) |
 | `input_zarr` | path | Input OME-Zarr with a Z axis |
 
 ## Output
 | Name | Type | Description |
 | --- | --- | --- |
-| `zarr` | `tuple(meta, zarr)` | MIP OME-Zarr (`meta.mip_output_name`) |
+| `zarr` | `tuple(meta, zarr)` | MIP OME-Zarr (`meta.zarr_output`) |
 | `versions` | path | `versions.yml` |

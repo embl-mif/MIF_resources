@@ -11,7 +11,7 @@ process PYMIF_MIP {
     path "versions.yml"                   , emit: versions
 
     script:
-    output_mip = meta.mip_output_name ?: "${meta.id}_mip.ome.zarr"
+    output_mip = meta.zarr_output ?: "${meta.id}_mip.ome.zarr"
     // A `path` output must live in the work dir: an absolute output is exposed there as a
     // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
     output_mip_link = new File(output_mip.toString()).name

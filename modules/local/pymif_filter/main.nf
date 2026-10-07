@@ -11,8 +11,8 @@ process PYMIF_FILTER {
     path "versions.yml"                                             , emit: versions
 
     script:
-    output_labels = meta.filter_output_name ?: "${meta.id}_filtered_labels.ome.zarr"
-    output_csv = meta.filter_csv_output_name ?: "${meta.id}_filtered_labels.csv"
+    output_labels = meta.zarr_output ?: "${meta.id}_filtered_labels.ome.zarr"
+    output_csv = meta.csv_output ?: "${meta.id}_filtered_labels.csv"
     // A `path` output must live in the work dir: an absolute output is exposed there as a
     // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
     output_labels_link = new File(output_labels.toString()).name
