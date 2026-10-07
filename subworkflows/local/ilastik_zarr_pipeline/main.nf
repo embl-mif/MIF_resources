@@ -25,12 +25,12 @@ workflow ILASTIK_ZARR_PIPELINE {
     ch_split_ilastik_input = ilastik_input_ch
         .map { meta, raw_zarr, output_zarr ->
             def (localRawZarr, rawZarrUri) = Utils.splitImageInput(raw_zarr, noImageSentinel)
-            tuple(meta, localRawZarr, rawZarrUri, output_zarr)
+            tuple(meta, localRawZarr, rawZarrUri, zarr_output)
         }
 
     ch_prealloc_input = ch_split_ilastik_input
         .combine(ch_channel_info)
-        .map { meta, localRawZarr, rawZarrUri, output_zarr, channelInfo ->
+        .map { meta, localRawZarr, rawZarrUri, zarr_output, channelInfo ->
             def prealloc_meta = meta.clone()
             prealloc_meta.num_channels   = channelInfo.num_channels
             prealloc_meta.channel_labels = channelInfo.channel_labels
@@ -43,26 +43,25 @@ workflow ILASTIK_ZARR_PIPELINE {
             prealloc_meta.y_max = null
             prealloc_meta.x_min = null
             prealloc_meta.x_max = null
-            prealloc_meta.output_zarr_key = output_zarr
-            prealloc_meta.zarr_output = output_zarr
-            tuple(prealloc_meta, localRawZarr, rawZarrUri, output_zarr)
+            prealloc_meta.zarr_output = zarr_output
+            tuple(prealloc_meta, localRawZarr, rawZarrUri, zarr_output)
         }
 
     ch_prealloc_unique = ch_prealloc_input
-        .map { meta, localRawZarr, rawZarrUri, output_zarr -> tuple(output_zarr, meta, localRawZarr, rawZarrUri) }
+        .map { meta, localRawZarr, rawZarrUri, zarr_output -> tuple(zarr_output, meta, localRawZarr, rawZarrUri) }
         .unique { it[0] }
-        .map { output_zarr, meta, localRawZarr, rawZarrUri -> tuple(meta, localRawZarr, rawZarrUri, noTilesCsv) }
+        .map { zarr_output, meta, localRawZarr, rawZarrUri -> tuple(meta, localRawZarr, rawZarrUri, noTilesCsv) }
 
     PREALLOCATE_ZARR(ch_prealloc_unique)
     ch_versions = ch_versions.mix(PREALLOCATE_ZARR.out.versions)
 
     ch_ilastik_ready = ch_split_ilastik_input
-        .map { meta, localRawZarr, rawZarrUri, output_zarr -> tuple(output_zarr, meta, localRawZarr, rawZarrUri) }
+        .map { meta, localRawZarr, rawZarrUri, zarr_output -> tuple(zarr_output, meta, localRawZarr, rawZarrUri) }
         .combine(
-            PREALLOCATE_ZARR.out.zarr.map { m, zarr -> tuple(m.output_zarr_key, zarr) },
+            PREALLOCATE_ZARR.out.zarr.map { m, zarr -> tuple(m.zarr_output, zarr) },
             by: 0
         )
-        .map { output_zarr, meta, localRawZarr, rawZarrUri, prealloc_zarr ->
+        .map { zarr_output, meta, localRawZarr, rawZarrUri, prealloc_zarr ->
             tuple(meta, localRawZarr, rawZarrUri, prealloc_zarr)
         }
 
@@ -70,7 +69,7 @@ workflow ILASTIK_ZARR_PIPELINE {
     ch_versions = ch_versions.mix(ILASTIK_ZARR.out.versions)
 
     ch_ready_for_pyramid = ILASTIK_ZARR.out.zarr
-        .map { meta, output_zarr -> tuple(meta.id, meta, output_zarr) }
+        .map { meta, zarr_output -> tuple(meta.id, meta, zarr_output) }
         .groupTuple(by: 0)
         .map { id, metas, zarrs -> tuple(metas[0], zarrs[0], "Average") }
 
