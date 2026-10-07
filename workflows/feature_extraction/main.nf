@@ -30,7 +30,7 @@ workflow {
 
             def meta = row + [
                 id                                       : dataset_id,
-                features_output_name                     : resolved_features_output,
+                csv_output                     : resolved_features_output,
                 features_intensity_resolution_level       : intensity_resolution_level
                     ? intensity_resolution_level as int
                     : (params.intensity_resolution_level != null ? params.intensity_resolution_level as int : 0),

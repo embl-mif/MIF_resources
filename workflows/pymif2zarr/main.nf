@@ -24,7 +24,7 @@ workflow {
 
             def meta = row + [
                 id                       : dataset_id,
-                zarr_output_name         : resolved_zarr_output,
+                zarr_output         : resolved_zarr_output,
             ]
 
             tuple(meta, input_dataset)
