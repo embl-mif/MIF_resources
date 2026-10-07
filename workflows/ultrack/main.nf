@@ -5,32 +5,44 @@ nextflow.enable.dsl = 2
 include { ULTRACK_ZARR_PIPELINE } from '../../subworkflows/local/ultrack_zarr_pipeline/main'
 
 workflow {
-    if (!params.probabilities_zarr) error "Missing required parameter: --probabilities_zarr"
-    if (!params.input_zarr)         error "Missing required parameter: --input_zarr"
-    if (!params.outdir)             error "Missing required parameter: --outdir"
+    if (!params.input_csv) error "Missing required parameter: --input_csv"
 
-    def dataset_id = params.dataset_id ?: "test_dataset"
+    def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
-    def meta = [
-        id                 : dataset_id,
-        output_dir         : "${file(params.outdir)}/tracking",
-        output_zarr        : "${file(params.outdir)}/tracking/${dataset_id}_tracked.zarr",
-        foreground_channel : 1,      // "cells"
-        contours_channel   : null,
-        raw_channel        : 0,      // brightfield
-        t_min              : 0,
-        t_max              : 5,
-        min_area           : 200,
-        max_area            : 20000,
-        max_distance        : 10.0,
-        solution_gap         : 0.1,
-        time_limit           : 600,
-    ]
-    def probabilities_zarr = file(params.probabilities_zarr, checkIfExists: true)
-    def input_zarr_file    = file(params.input_zarr, checkIfExists: true)
+    input_csv_ch = Channel
+        .fromPath(params.input_csv, checkIfExists: true)
 
-    ch_ultrack_input = Channel.of([ meta, probabilities_zarr, input_zarr_file ])
-    val_config_toml   = params.ultrack_config ? Channel.value(file(params.ultrack_config)) : Channel.value([])
+    ch_ultrack_input = input_csv_ch
+        .splitCsv(header: true)
+        .map { row ->
+            def index = row_index.getAndIncrement()
+
+            def prob_uri  = Utils.requireColumnValue(row, 'probabilities_zarr')
+            def input_uri = Utils.requireColumnValue(row, 'input_zarr')
+
+            def probabilities_zarr = Utils.resolvePath(prob_uri, params.input_csv)
+            def input_zarr         = Utils.resolvePath(input_uri, params.input_csv)
+
+            def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
+                ?: "${file(input_uri).simpleName}_${index + 1}"
+
+            def default_zarr_output = params.outdir
+                ? "${file(params.outdir)}/tracking/${dataset_id}_tracked.zarr"
+                : null
+
+            if (!Utils.normalizeOptionalText(row.ultrack_output) && !default_zarr_output) {
+                throw new IllegalArgumentException(
+                    "ultrack_output is blank for dataset_id=${dataset_id} and --outdir is not set. " +
+                    "Set an absolute ultrack_output in the CSV or pass --outdir."
+                )
+            }
+
+            def zarr_output = Utils.resolveOutput(row, 'ultrack_output', default_zarr_output, dataset_id)
+
+            tuple(row + [id: dataset_id, zarr_output: zarr_output], probabilities_zarr, input_zarr)
+        }
+
+    val_config_toml = params.ultrack_config ? Channel.value(file(params.ultrack_config)) : Channel.value([])
 
     ULTRACK_ZARR_PIPELINE(ch_ultrack_input, val_config_toml)
 
