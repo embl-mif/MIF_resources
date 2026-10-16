@@ -1,7 +1,7 @@
 process PYMIF_CONVERSION {
     tag "${meta.id}"
     label 'process_medium'
-    container 'ghcr.io/embl-mif/pymif:0.4.1'
+    container 'ghcr.io/embl-mif/pymif:0.5.0'
 
     input:
     tuple val(meta), path(input_dataset)
@@ -47,7 +47,7 @@ process PYMIF_CONVERSION {
 
     // Required CSV columns have CLI names that differ from their headers.
     def commandParts = [
-        'pymif', '2zarr',
+        'pymif', 'convert',
         '--input_path', shellQuote(input_dataset),
         '--zarr_path', shellQuote(output_zarr)
     ]

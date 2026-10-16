@@ -1,6 +1,6 @@
 # pymif2zarr
 
-Converts microscopy datasets to OME-Zarr using one `pymif 2zarr` task per row
+Converts microscopy datasets to OME-Zarr using one `pymif convert` task per row
 of an input CSV.
 
 ## Input CSV
@@ -14,7 +14,7 @@ to write it there, or leave it blank to keep `<dataset_id>.ome.zarr` in the
 Nextflow work directory of the task (a relative path is rejected). Set an
 absolute path for anything you want to keep.
 
-The other columns are optional and map to `pymif 2zarr` arguments:
+The other columns are optional and map to `pymif convert` arguments:
 
 | CSV column | PyMIF argument |
 | --- | --- |

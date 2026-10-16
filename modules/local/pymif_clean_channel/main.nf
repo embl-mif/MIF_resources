@@ -1,7 +1,7 @@
 process PYMIF_CLEAN_CHANNEL {
     tag "${meta.id}"
     label 'process_high'
-    container 'ghcr.io/embl-mif/pymif:0.4.1'
+    container 'ghcr.io/embl-mif/pymif:0.5.0'
 
     input:
     tuple val(meta), path(intensity_zarr), path(labels_zarr)

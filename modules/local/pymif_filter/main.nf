@@ -1,7 +1,7 @@
 process PYMIF_FILTER {
     tag "${meta.id}"
     label 'process_high'
-    container 'ghcr.io/embl-mif/pymif:0.4.1'
+    container 'ghcr.io/embl-mif/pymif:0.5.0'
 
     input:
     tuple val(meta), path(labels_zarr), path(csv_file)

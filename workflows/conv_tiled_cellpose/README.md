@@ -9,7 +9,7 @@ segmenting the tiles.
 
 ## Steps
 
-1. `PYMIF_CONVERSION` – convert to OME-Zarr (`pymif 2zarr`). Skipped if the
+1. `PYMIF_CONVERSION` – convert to OME-Zarr (`pymif convert`). Skipped if the
    store already exists.
 2. `TILE_CONSTRUCTOR` – compute the tile grid (and optional ROI).
 3. `PREALLOCATE_ZARR` – pre-allocate the merged `uint32` label store.
@@ -44,7 +44,7 @@ One dataset per row. Required column:
 Use absolute paths for `output`/`labels_output`. Conversion columns
 (`microscope`, `chunk_size`, `max_size(MB)`, `scene_index`, `zarr_format`,
 `downscale_factor`, `channel_colors`, `channel_names`, `num_levels`, `subset`,
-`shards`, `shard_target_mb`, `shard_exclude_axes`) map to `pymif 2zarr`
+`shards`, `shard_target_mb`, `shard_exclude_axes`) map to `pymif convert`
 arguments exactly as in [conv_cellpose](../conv_cellpose/README.md). Paths
 containing commas must be CSV-quoted.
 
