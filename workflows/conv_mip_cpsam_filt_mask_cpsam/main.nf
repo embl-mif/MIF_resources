@@ -2,36 +2,54 @@
 
 nextflow.enable.dsl = 2
 
-include { PYMIF_CONVERSION              } from '../../modules/local/pymif_conversion/main'
-include { PYMIF_MIP                     } from '../../modules/local/pymif_mip/main'
-include { PYMIF_FEATURE_EXTRACTION      } from '../../modules/local/pymif_feature_extraction/main'
-include { PYMIF_FILTER                  } from '../../modules/local/pymif_filter/main'
-include { PYMIF_CLEAN_CHANNEL           } from '../../modules/local/pymif_clean_channel/main'
+include { PYMIF_CONVERSION                        } from '../../modules/local/pymif_conversion/main'
+include { PYMIF_MIP                               } from '../../modules/local/pymif_mip/main'
+include { PYMIF_FEATURE_EXTRACTION                } from '../../modules/local/pymif_feature_extraction/main'
+include { PYMIF_FILTER                            } from '../../modules/local/pymif_filter/main'
+include { PYMIF_CLEAN_CHANNEL                     } from '../../modules/local/pymif_clean_channel/main'
 include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_SEED  } from '../../modules/local/cellpose_sam_zarr_mif/main'
 include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_FINAL } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
 workflow {
+    def repoRootDir = workflow.projectDir.getParent().getParent()
 
-    def default_zarr_dir = "${file(params.default_outdir)}/zarr"
-    def default_mip_dir = "${file(params.default_outdir)}/mip"
-    def default_seed_dir = "${file(params.default_outdir)}/seed_labels"
-    def default_features_dir = "${file(params.default_outdir)}/measurements"
-    def default_filtered_dir = "${file(params.default_outdir)}/filtered"
-    def default_clean_dir = "${file(params.default_outdir)}/clean"
-    def default_labels_dir = "${file(params.default_outdir)}/labels"
+    def defaultOutput = { String subdir, String fileName ->
+        if (!params.outdir) {
+            error "--outdir is required when a row leaves its output column blank (needed for ${fileName})"
+        }
+        "${file(params.outdir)}/${subdir}/${fileName}".toString()
+    }
+
+    def resolveRowOutput = { row, String column, String subdir, String fileName, String datasetId ->
+        Utils.normalizeOptionalText(row[column])
+            ? Utils.resolveOutput(row, column, null, datasetId)
+            : defaultOutput(subdir, fileName)
+    }
+
+    def resolveIntermediate = { row, String column, String datasetId ->
+        Utils.normalizeOptionalText(row[column])
+            ? Utils.resolveOutput(row, column, null, datasetId)
+            : null
+    }
+
+    def resolveConvertedOutput = { row, String datasetId ->
+        Utils.normalizeOptionalText(row.output)
+            ? Utils.resolveOutput(row, 'output', null, datasetId)
+            : (params.outdir ? "${file(params.outdir)}/zarr/${datasetId}.ome.zarr".toString() : null)
+    }
 
     ch_cellpose_model = Channel.value(
         params.cellpose_model_path
             ? file(params.cellpose_model_path, checkIfExists: true)
-            : file("${workflow.projectDir}/assets/NO_MODEL_FILE")
+            : file("${repoRootDir}/assets/NO_MODEL_FILE")
     )
+
+    def noImageSentinel = file("${repoRootDir}/assets/NO_FILE")
 
     def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
-    input_csv_ch = Channel
+    pymif_inputs_ch = Channel
         .fromPath(params.input_csv, checkIfExists: true)
-
-    pymif_inputs_ch = input_csv_ch
         .splitCsv(header: true)
         .map { row ->
             def index = row_index.getAndIncrement()
@@ -40,116 +58,28 @@ workflow {
             def dataset_id = Utils.normalizeOptionalText(row.dataset_id)
                 ?: "${input_dataset.simpleName}_${index + 1}"
 
-            def resolved_zarr_output = Utils.resolveOutput(row, 'output', "${default_zarr_dir}/${dataset_id}.ome.zarr", dataset_id)
-            def resolved_mip_output = Utils.resolveOutput(row, 'mip_output', "${default_mip_dir}/${dataset_id}_mip.ome.zarr", dataset_id)
-            def resolved_seed_output = Utils.resolveOutput(row, 'seed_output', "${default_seed_dir}/${dataset_id}_seed_labels.ome.zarr", dataset_id)
-            def resolved_features_output = Utils.resolveOutput(row, 'features_output', "${default_features_dir}/${dataset_id}_features.csv", dataset_id)
-            def resolved_filter_output = Utils.resolveOutput(row, 'filter_output', "${default_filtered_dir}/${dataset_id}_filtered_labels.ome.zarr", dataset_id)
-            def resolved_filter_csv_output = Utils.resolveOutput(row, 'filter_csv_output', "${default_filtered_dir}/${dataset_id}_filtered_labels.csv", dataset_id)
-            def resolved_clean_output = Utils.resolveOutput(row, 'clean_output', "${default_clean_dir}/${dataset_id}_clean.ome.zarr", dataset_id)
-            def resolved_labels_output = Utils.resolveOutput(row, 'labels_output', "${default_labels_dir}/${dataset_id}_labels.ome.zarr", dataset_id)
-
-            // Required: which MIP channel(s) the seed Cellpose call segments
-            // on, in place of the Otsu-threshold channel used by
-            // conv_mip_label_filter_mask_cellpose.
-            def seed_channels_text = Utils.requireColumnValue(row, 'seed_channels')
-            def resolution_level = Utils.normalizeOptionalText(row.resolution_level)
-
-            def features_resolution_level_text = Utils.normalizeOptionalText(row.features_resolution_level)
-            // The seed Cellpose call always segments at resolution level 0
-            // (see the PYMIF_FEATURE_EXTRACTION note below), so that is also
-            // the only resolution level guaranteed valid for both the MIP
-            // and the seed labels here.
-            def resolved_features_resolution_level = features_resolution_level_text
-                ? features_resolution_level_text as int
-                : 0
-
-            def clean_channel_text = Utils.normalizeOptionalText(row.clean_channel)
-            // No single default channel exists when seed_channels lists
-            // several channels, so fall back to the first one listed.
-            def default_clean_channel = (seed_channels_text.split(/[;,\s]+/).findAll { it })[0] as int
-
-            def seed_diameter_value = Utils.normalizeOptionalText(row.seed_diameter)
-            def seed_niter_value = Utils.normalizeOptionalText(row.seed_niter)
-            def seed_halo = Utils.normalizeOptionalText(row.seed_halo)
-            def seed_flow_threshold = Utils.normalizeOptionalText(row.seed_flow_threshold)
-            def seed_cellprob_threshold = Utils.normalizeOptionalText(row.seed_cellprob_threshold)
-            def seed_use_physical_units = Utils.normalizeOptionalText(row.seed_use_physical_units)
-            def seed_do_3D_text = Utils.normalizeOptionalText(row.seed_do_3D)
-
-            def diameter_value = Utils.normalizeOptionalText(row.cellpose_diameter)
-            def niter_value = Utils.normalizeOptionalText(row.cellpose_niter)
-            def cellpose_channels = Utils.normalizeOptionalText(row.cellpose_channels)
-            def cellpose_halo = Utils.normalizeOptionalText(row.cellpose_halo)
-            def flow_threshold = Utils.normalizeOptionalText(row.cellpose_flow_threshold)
-            def cellprob_threshold = Utils.normalizeOptionalText(row.cellpose_cellprob_threshold)
-            def use_physical_units = Utils.normalizeOptionalText(row.use_physical_units)
-            def do_3D_text = Utils.normalizeOptionalText(row.do_3D)
+            Utils.requireColumnValue(row, 'seed_channels')
+            def seed_halo = Utils.parseOptionalFloat(row.seed_halo, 'seed_halo')
 
             def meta = row + [
-                id                       : dataset_id,
-                zarr_output_name         : resolved_zarr_output,
+                id               : dataset_id,
+                zarr_output      : resolveConvertedOutput(row, dataset_id),
+                mip_output       : resolveIntermediate(row, 'mip_output', dataset_id),
+                seed_output      : resolveIntermediate(row, 'seed_output', dataset_id),
+                features_output  : resolveRowOutput(row, 'features_output',   'measurements', "${dataset_id}_features.csv",             dataset_id),
+                filter_output    : resolveIntermediate(row, 'filter_output', dataset_id),
+                filter_csv_output: resolveRowOutput(row, 'filter_csv_output', 'filtered',    "${dataset_id}_filtered_labels.csv",       dataset_id),
+                clean_output     : resolveIntermediate(row, 'clean_output', dataset_id),
+                labels_output    : resolveRowOutput(row, 'labels_output',     'labels',      "${dataset_id}_labels.ome.zarr",           dataset_id),
 
-                mip_output_name          : resolved_mip_output,
-
-                // CELLPOSE_SEED: segments meta.seed_segmentation_channels of
-                // the MIP at resolution level 0, replacing the Otsu-label
-                // step. Kept under seed_*-prefixed keys (rather than the
-                // plain segmentation_channels/halo/... keys CELLPOSE_SAM_ZARR_MIF
-                // reads) so they don't collide with the final Cellpose call's
-                // own settings below; they're remapped just before that call.
-                seed_output_name           : resolved_seed_output,
-                seed_segmentation_channels : seed_channels_text,
-                seed_halo                  : seed_halo != null && seed_halo != '' ? seed_halo as float : 20.0,
-                seed_diameter               : seed_diameter_value ? seed_diameter_value as int : null,
-                seed_niter                  : seed_niter_value ? seed_niter_value as int : null,
-                seed_flow_threshold         : seed_flow_threshold ? seed_flow_threshold as float : null,
-                seed_cellprob_threshold     : seed_cellprob_threshold ? seed_cellprob_threshold as float : null,
-                seed_use_physical_units     : seed_use_physical_units ? seed_use_physical_units.toBoolean() : false,
-                seed_do_3D                  : seed_do_3D_text ?: false,
-
-                // PYMIF_FEATURE_EXTRACTION: measure the MIP + seed Cellpose
-                // labels. Both zarrs share the same pyramid only when the
-                // seed call ran at resolution level 0 (CELLPOSE_SAM_ZARR_MIF
-                // otherwise builds a shorter pyramid starting at that level),
-                // so this is not exposed as a configurable column here.
-                features_output_name                : resolved_features_output,
-                features_intensity_resolution_level : resolved_features_resolution_level,
-                features_labels_resolution_level    : resolved_features_resolution_level,
-                features_channels                   : Utils.normalizeOptionalText(row.features_channels),
-                features_extra_properties           : Utils.normalizeOptionalText(row.features_extra_properties),
-                features_extra_intensity_properties : Utils.normalizeOptionalText(row.features_extra_intensity_properties),
-
-                // PYMIF_FILTER: keep only labels whose measured row satisfies
-                // these limits, and relabel the survivors to 1..N.
-                filter_output_name      : resolved_filter_output,
-                filter_csv_output_name  : resolved_filter_csv_output,
-                filter_min_area         : Utils.parseOptionalFloat(row.filter_min_area, 'filter_min_area'),
-                filter_max_area         : Utils.parseOptionalFloat(row.filter_max_area, 'filter_max_area'),
-                filter_properties       : Utils.normalizeOptionalText(row.filter_properties),
-
-                // PYMIF_CLEAN_CHANNEL: zero meta.clean_channel of the MIP
-                // outside the filtered labels, and append it as a new channel.
-                clean_output_name        : resolved_clean_output,
-                clean_channel            : clean_channel_text
-                    ? clean_channel_text as int
-                    : default_clean_channel,
-
-                // CELLPOSE_FINAL: segments the clean-channel OME-Zarr.
-                diameter              : diameter_value ? diameter_value as int : null,
-                niter                 : niter_value ? niter_value as int : null,
-                segmentation_channels : cellpose_channels ?: null,
-                halo                  : cellpose_halo != null && cellpose_halo != ''
-                    ? cellpose_halo as float
-                    : (params.cellpose_halo != null ? params.cellpose_halo as float : 20.0),
-                flow_threshold        : flow_threshold ? flow_threshold as float : null,
-                cellprob_threshold    : cellprob_threshold ? cellprob_threshold as float : null,
-                resolution_level      : resolution_level
-                    ? resolution_level as int
-                    : (params.resolution_level != null ? params.resolution_level as int : 0),
-                use_physical_units    : use_physical_units ? use_physical_units.toBoolean() : false,
-                do_3D                 : do_3D_text ?: false,
-                labels_output_name    : resolved_labels_output
+                seed_segmentation_channels: Utils.normalizeOptionalText(row.seed_channels),
+                seed_halo                 : seed_halo != null ? seed_halo : 20.0,
+                seed_diameter             : Utils.parseOptionalInt(row.seed_diameter, 'seed_diameter'),
+                seed_niter                : Utils.parseOptionalInt(row.seed_niter, 'seed_niter'),
+                seed_flow_threshold       : Utils.parseOptionalFloat(row.seed_flow_threshold, 'seed_flow_threshold'),
+                seed_cellprob_threshold   : Utils.parseOptionalFloat(row.seed_cellprob_threshold, 'seed_cellprob_threshold'),
+                seed_use_physical_units   : Utils.normalizeOptionalText(row.seed_use_physical_units)?.toBoolean() ?: false,
+                seed_do_3D                : Utils.normalizeOptionalText(row.seed_do_3D)?.toBoolean() ?: false,
             ]
 
             tuple(meta, input_dataset)
@@ -157,103 +87,137 @@ workflow {
 
     PYMIF_CONVERSION(pymif_inputs_ch)
 
-    /*
-     * Creates a multiscale 2D OME-Zarr by applying max() over Z at every
-     * resolution level.
-     *
-     * Expected output:
-     * tuple(meta, mip_zarr)
-     */
-    PYMIF_MIP(PYMIF_CONVERSION.out.zarr)
+    def boolOrFalse = { value ->
+        def text = Utils.normalizeOptionalText(value)
+        text ? text.toBoolean() : false
+    }
 
-    /*
-     * Segments meta.seed_segmentation_channels of the MIP with Cellpose-SAM
-     * at resolution level 0, in place of the Otsu-threshold + label step.
-     * Remap the seed_*-prefixed meta fields into the plain field names
-     * CELLPOSE_SAM_ZARR_MIF reads, and force resolution_level 0 so its
-     * output pyramid has exactly as many levels as the MIP (see the
-     * features_resolution_level note above).
-     *
-     * Expected output:
-     * tuple(meta, seed_labels_zarr)
-     */
-    ch_seed_inputs = PYMIF_MIP.out.zarr
+    def cropBounds = { m ->
+        [
+            x_min: Utils.parseOptionalFloat(m.x_min, 'x_min'),
+            x_max: Utils.parseOptionalFloat(m.x_max, 'x_max'),
+            y_min: Utils.parseOptionalFloat(m.y_min, 'y_min'),
+            y_max: Utils.parseOptionalFloat(m.y_max, 'y_max'),
+            z_min: Utils.parseOptionalFloat(m.z_min, 'z_min'),
+            z_max: Utils.parseOptionalFloat(m.z_max, 'z_max'),
+        ]
+    }
+
+    def seedMeta = { m ->
+        [
+            id                   : m.id,
+            zarr_output          : m.seed_output,
+            segmentation_channels: m.seed_segmentation_channels,
+            halo                 : m.seed_halo,
+            diameter             : m.seed_diameter,
+            niter                : m.seed_niter,
+            flow_threshold       : m.seed_flow_threshold,
+            cellprob_threshold   : m.seed_cellprob_threshold,
+            use_physical_units   : m.seed_use_physical_units,
+            do_3D                : m.seed_do_3D,
+            resolution_level     : 0,
+        ] + cropBounds(m)
+    }
+
+    def featuresMeta = { m ->
+        def level = Utils.parseOptionalInt(m.features_resolution_level, 'features_resolution_level')
+        [
+            id                                  : m.id,
+            csv_output                          : m.features_output,
+            features_intensity_resolution_level : level != null ? level : 0,
+            features_labels_resolution_level    : level != null ? level : 0,
+            features_channels                   : Utils.normalizeOptionalText(m.features_channels),
+            features_extra_properties           : Utils.normalizeOptionalText(m.features_extra_properties),
+            features_extra_intensity_properties : Utils.normalizeOptionalText(m.features_extra_intensity_properties),
+        ]
+    }
+
+    def filterMeta = { m ->
+        [
+            id              : m.id,
+            zarr_output     : m.filter_output,
+            csv_output      : m.filter_csv_output,
+            filter_min_area : Utils.parseOptionalFloat(m.filter_min_area, 'filter_min_area'),
+            filter_max_area : Utils.parseOptionalFloat(m.filter_max_area, 'filter_max_area'),
+            filter_properties: Utils.normalizeOptionalText(m.filter_properties),
+        ]
+    }
+
+    def cleanMeta = { m ->
+        def clean_channel = Utils.parseOptionalInt(m.clean_channel, 'clean_channel')
+        def default_clean_channel = (Utils.normalizeOptionalText(m.seed_channels).split(/[;,\s]+/).findAll { it })[0] as int
+        [
+            id           : m.id,
+            zarr_output  : m.clean_output,
+            clean_channel: clean_channel != null ? clean_channel : default_clean_channel,
+        ]
+    }
+
+    def finalMeta = { m ->
+        def level = Utils.parseOptionalInt(m.resolution_level, 'resolution_level')
+        def halo  = Utils.parseOptionalFloat(m.cellpose_halo, 'cellpose_halo')
+        [
+            id                   : m.id,
+            zarr_output          : m.labels_output,
+            resolution_level     : level != null ? level : (params.resolution_level != null ? params.resolution_level as int : 0),
+            use_physical_units   : boolOrFalse(m.use_physical_units),
+            do_3D                : boolOrFalse(m.do_3D),
+            diameter             : Utils.parseOptionalInt(m.cellpose_diameter, 'cellpose_diameter'),
+            niter                : Utils.parseOptionalInt(m.cellpose_niter, 'cellpose_niter'),
+            segmentation_channels: Utils.normalizeOptionalText(m.cellpose_channels),
+            flow_threshold       : Utils.parseOptionalFloat(m.cellpose_flow_threshold, 'cellpose_flow_threshold'),
+            cellprob_threshold   : Utils.parseOptionalFloat(m.cellpose_cellprob_threshold, 'cellpose_cellprob_threshold'),
+            halo                 : halo != null ? halo : (params.cellpose_halo != null ? params.cellpose_halo as float : 20.0),
+        ] + cropBounds(m)
+    }
+
+    PYMIF_MIP(
+        PYMIF_CONVERSION.out.zarr.map { meta, zarr_path ->
+            tuple(meta + [zarr_output: meta.mip_output], zarr_path)
+        }
+    )
+
+    ch_mip = PYMIF_MIP.out.zarr
+
+    ch_seed_inputs = ch_mip
         .map { meta, zarr_path ->
-            def seed_meta = meta + [
-                segmentation_channels: meta.seed_segmentation_channels,
-                halo                 : meta.seed_halo,
-                diameter             : meta.seed_diameter,
-                niter                : meta.seed_niter,
-                flow_threshold       : meta.seed_flow_threshold,
-                cellprob_threshold   : meta.seed_cellprob_threshold,
-                use_physical_units   : meta.seed_use_physical_units,
-                do_3D                : meta.seed_do_3D,
-                resolution_level     : 0,
-                labels_output_name   : meta.seed_output_name,
-            ]
-            def (local_image, image_uri) = Utils.splitImageInput(
-                zarr_path,
-                file("${workflow.projectDir}/assets/NO_FILE")
-            )
-            tuple(seed_meta, local_image, image_uri)
+            def (local_image, image_uri) = Utils.splitImageInput(zarr_path, noImageSentinel)
+            tuple(seedMeta(meta), local_image, image_uri)
         }
 
     CELLPOSE_SEED(ch_seed_inputs, ch_cellpose_model)
 
-    /*
-     * Measures every seed-labeled object against the MIP (every channel by
-     * default) with skimage.measure.regionprops.
-     *
-     * Expected output:
-     * tuple(meta, features_csv)
-     */
-    ch_features_inputs = PYMIF_MIP.out.zarr
-        .map { meta, zarr -> tuple(meta.id, meta, zarr) }
-        .join(CELLPOSE_SEED.out.labels.map { meta, labels -> tuple(meta.id, labels) })
-        .map { id, meta, intensity, labels -> tuple(meta, intensity, labels) }
+    ch_seed_labels = CELLPOSE_SEED.out.labels.map { meta, labels -> tuple(meta.id, labels) }
+
+    ch_features_inputs = ch_mip
+        .map { meta, zarr -> tuple(meta.id, featuresMeta(meta), zarr) }
+        .join(ch_seed_labels)
+        .map { id, features_meta, intensity, labels -> tuple(features_meta, intensity, labels) }
 
     PYMIF_FEATURE_EXTRACTION(ch_features_inputs)
 
-    /*
-     * Keeps only the seed-labeled objects whose measured row satisfies
-     * meta.filter_min_area/filter_max_area/filter_properties, relabels the
-     * survivors to a contiguous 1..N id space, and writes both the filtered
-     * labels and the filtered measurements CSV.
-     *
-     * Expected output:
-     * tuple(meta, filtered_labels_zarr, filtered_csv)
-     */
-    ch_filter_inputs = CELLPOSE_SEED.out.labels
-        .map { meta, labels -> tuple(meta.id, meta, labels) }
+    ch_filter_inputs = ch_mip
+        .map { meta, zarr -> tuple(meta.id, filterMeta(meta)) }
+        .join(ch_seed_labels)
         .join(PYMIF_FEATURE_EXTRACTION.out.csv.map { meta, csv -> tuple(meta.id, csv) })
-        .map { id, meta, labels, csv -> tuple(meta, labels, csv) }
+        .map { id, filter_meta, labels, csv -> tuple(filter_meta, labels, csv) }
 
     PYMIF_FILTER(ch_filter_inputs)
 
-    /*
-     * Zeros meta.clean_channel of the MIP outside the filtered labels, and
-     * appends it as a new channel of a new OME-Zarr (every original MIP
-     * channel plus this one), preserving the MIP's full pyramid.
-     *
-     * Expected output:
-     * tuple(meta, clean_zarr)
-     */
-    ch_clean_inputs = PYMIF_MIP.out.zarr
-        .map { meta, intensity -> tuple(meta.id, meta, intensity) }
+    ch_clean_inputs = ch_mip
+        .map { meta, intensity -> tuple(meta.id, cleanMeta(meta), intensity) }
         .join(PYMIF_FILTER.out.zarr_csv.map { meta, labels, csv -> tuple(meta.id, labels) })
-        .map { id, meta, intensity, labels -> tuple(meta, intensity, labels) }
+        .map { id, clean_meta, intensity, labels -> tuple(clean_meta, intensity, labels) }
 
     PYMIF_CLEAN_CHANNEL(ch_clean_inputs)
 
-    ch_cellpose_inputs = PYMIF_CLEAN_CHANNEL.out.zarr
-        .map { meta, zarr_path ->
-            def (local_image, image_uri) = Utils.splitImageInput(
-                zarr_path,
-                file("${workflow.projectDir}/assets/NO_FILE")
-            )
-            tuple(meta, local_image, image_uri)
+    ch_final_inputs = ch_mip
+        .map { meta, zarr -> tuple(meta.id, meta) }
+        .join(PYMIF_CLEAN_CHANNEL.out.zarr.map { meta, zarr_path -> tuple(meta.id, zarr_path) })
+        .map { id, meta, zarr_path ->
+            def (local_image, image_uri) = Utils.splitImageInput(zarr_path, noImageSentinel)
+            tuple(finalMeta(meta), local_image, image_uri)
         }
 
-    CELLPOSE_FINAL(ch_cellpose_inputs, ch_cellpose_model)
-
+    CELLPOSE_FINAL(ch_final_inputs, ch_cellpose_model)
 }
