@@ -33,6 +33,13 @@ process PYMIF_ENDOMORPH_REGIONS {
     def emptyMinAreaArg = meta.endomorph_empty_min_area != null ? "--empty-min-area ${meta.endomorph_empty_min_area}" : ""
     def emptySeedPercentileArg = meta.endomorph_empty_seed_percentile != null ? "--empty-seed-percentile ${meta.endomorph_empty_seed_percentile}" : ""
     def emptyMinContrastArg = meta.endomorph_empty_min_contrast != null ? "--empty-min-contrast ${meta.endomorph_empty_min_contrast}" : ""
+    def emptyNucleusChannelArg = meta.endomorph_empty_nucleus_channel ? "--empty-nucleus-channel ${shellQuote(meta.endomorph_empty_nucleus_channel)}" : ""
+    def emptyNucleusFactorArg = meta.endomorph_empty_nucleus_factor != null ? "--empty-nucleus-factor ${meta.endomorph_empty_nucleus_factor}" : ""
+    def emptyCoreMinAreaArg = meta.endomorph_empty_core_min_area != null ? "--empty-core-min-area ${meta.endomorph_empty_core_min_area}" : ""
+    def emptyCellPercentileArg = meta.endomorph_empty_cell_percentile != null ? "--empty-cell-percentile ${meta.endomorph_empty_cell_percentile}" : ""
+    def emptyCoreThresholdArg = meta.endomorph_empty_core_threshold != null ? "--empty-core-threshold ${meta.endomorph_empty_core_threshold}" : ""
+    def emptyEdgeThresholdArg = meta.endomorph_empty_edge_threshold != null ? "--empty-edge-threshold ${meta.endomorph_empty_edge_threshold}" : ""
+    def emptyMaxFloorRatioArg = meta.endomorph_empty_max_floor_ratio != null ? "--empty-max-floor-ratio ${meta.endomorph_empty_max_floor_ratio}" : ""
 
     """
     mkdir -p \$(dirname ${shellQuote(output_zarr)})
@@ -51,7 +58,14 @@ process PYMIF_ENDOMORPH_REGIONS {
         ${emptySmoothingArg} \
         ${emptyMinAreaArg} \
         ${emptySeedPercentileArg} \
-        ${emptyMinContrastArg}
+        ${emptyMinContrastArg} \
+        ${emptyNucleusChannelArg} \
+        ${emptyNucleusFactorArg} \
+        ${emptyCoreMinAreaArg} \
+        ${emptyCellPercentileArg} \
+        ${emptyCoreThresholdArg} \
+        ${emptyEdgeThresholdArg} \
+        ${emptyMaxFloorRatioArg}
 
     if [ ! -e ${shellQuote(output_zarr)}/zarr.json ] && [ ! -e ${shellQuote(output_zarr)}/.zgroup ]; then
         echo "ERROR: expected zarr store not found: ${output_zarr}" >&2
