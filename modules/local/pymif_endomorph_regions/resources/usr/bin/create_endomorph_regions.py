@@ -25,11 +25,27 @@ The zarr is written at the resolution of the intensity image
 (--intensity-resolution-level); the labels are cropped/zero-padded to it if
 independent pyramids rounded the shape differently.
 
+Optional gaps (only with --gap-channels): a separate, finer estimate of the
+cell-free area, written to its own outputs. It changes nothing above (the
+regions zarr, its empty label and the empty-area QC are computed as without it).
+A gap is dark in ALL --gap-channels (the cell-body markers, e.g. VE-cadherin and
+actin) and is not a host nucleus (--gap-nucleus-channel of --gap-nucleus-zarr,
+e.g. HOECHST_33342_clean of the clean-channel zarr). Writes:
+
+  --gap-output      label OME-Zarr: 1 = gap, 2 = not imaged, 0 = everything else
+  --gap-output-csv  one-row summary: gap_area, gap_pct (of the imaged area), n_gaps, ...
+  --gap-output-qc   JSON with QC diagnostics (channel levels, floor ratios, nucleus exclusion)
+
+Small regions are NOT included in the gap percentage: a gap needs a core at
+background of at least --gap-core-min-area (default 1.5 um^2) and a total area
+of at least --gap-min-area (default 3 um^2).
+
 Stripped down from endo_morph's regions.py/empty_area.py/zarr_io.py
 (Z:\\people\\gritti\\projects\\Candelas_Adrian\\endo_morph).
 """
 
 import argparse
+import csv
 import json
 import re
 from dataclasses import dataclass, field
@@ -40,7 +56,8 @@ import pymif.microscope_manager as mm
 from scipy import ndimage as ndi
 from skimage.measure import regionprops
 
-NOT_IMAGED_MIN_AREA_UM2 = 25.0  # all-zero regions at least this large count as not imaged
+EDGE_THRESHOLD = 0.5  # cell signal is normalized to 0 = background, 1 = cell level
+GAP_NOT_IMAGED_MIN_AREA_UM2 = 25.0  # gaps: all-zero regions at least this large count as not imaged
 
 # NGFF requires UCUM-style unit names; pymif reports e.g. "µm".
 NGFF_UNITS = {
@@ -91,43 +108,58 @@ def parse_args():
     em.add_argument("--empty-channels", default=None, type=str,
                     help="Intensity channels (index or exact name, separated by "
                          "comma/semicolon/whitespace) whose signal means cells are present. "
-                         "A gap must be dark in ALL of them. Default: all channels. Use the cell-body "
-                         "markers only (e.g. VE-cadherin + actin); leave out channels that only stain "
-                         "part of the cell (nuclei) or that cannot tell a gap from cytoplasm.")
-    em.add_argument("--empty-nucleus-channel", default="auto", type=str,
-                    help="Nuclear-stain channel (index or exact name). Pixels where it is bright "
-                         "(> --empty-nucleus-factor x its median) are nuclei and never gap. It is "
-                         "removed from --empty-channels if listed there. 'auto' (default): the first "
-                         "channel whose name contains 'hoechst' or 'dapi' (case-insensitive), if any; "
-                         "'none': no nucleus veto.")
-    em.add_argument("--empty-nucleus-factor", type=float, default=8.0, metavar="X",
-                    help="A pixel is nucleus when its smoothed nuclear signal exceeds this multiple "
-                         "of the image median of that channel.")
-    em.add_argument("--empty-smoothing", type=float, default=0.3, metavar="UM",
-                    help="Gaussian smoothing of the signal before thresholding, in physical units. "
-                         "Keep it small (0.25-0.5): more smoothing blurs small holes into their bright rim.")
-    em.add_argument("--empty-min-area", type=float, default=3.0, metavar="UM2",
+                         "Default: all channels. Leave out channels that only stain part of "
+                         "the cell (e.g. nuclei).")
+    em.add_argument("--empty-smoothing", type=float, default=2.0, metavar="UM",
+                    help="Gaussian smoothing of the signal before thresholding, in physical units.")
+    em.add_argument("--empty-min-area", type=float, default=25.0, metavar="UM2",
                     help="Empty regions smaller than this (physical units^2) are ignored.")
-    em.add_argument("--empty-core-min-area", type=float, default=1.5, metavar="UM2",
-                    help="A gap must contain a core at background of at least this area (physical units^2).")
     em.add_argument("--empty-seed-percentile", type=float, default=1.0, metavar="PCT",
                     help="An empty region starts where a pixel is darker than this percentile "
                          "of the cell pixels in every channel at once.")
     em.add_argument("--empty-min-contrast", type=float, default=0.25, metavar="FRACTION",
                     help="A channel contributes to the cell signal only if "
                          "(cell - background) / cell reaches this.")
-    em.add_argument("--empty-cell-percentile", type=float, default=10.0, metavar="PCT",
-                    help="Cell level of a channel = this (low) percentile of the labelled-cell interior. "
-                         "A lower value amplifies the signal (more gain): dimmer cytoplasm counts as cell.")
-    em.add_argument("--empty-core-threshold", type=float, default=0.2, metavar="0-1",
-                    help="A gap must contain a core where the normalized cell signal is below this "
-                         "(0 = background, 1 = cell level); the gap extends to --empty-edge-threshold.")
-    em.add_argument("--empty-edge-threshold", type=float, default=0.65, metavar="0-1",
-                    help="The gap extends to where the normalized cell signal reaches this value.")
-    em.add_argument("--empty-max-floor-ratio", type=float, default=0.55, metavar="RATIO",
-                    help="No gap is reported unless the gap floor is below this fraction of the darkest "
-                         "cell pixels (guards against inventing gaps in a confluent field).")
-    return parser.parse_args()
+
+    gp = parser.add_argument_group("gaps (optional; off unless --gap-channels is given)")
+    gp.add_argument("--gap-channels", default=None, type=str,
+                    help="Gap channels (index or exact name, separated by comma/semicolon/whitespace): the "
+                         "cell-body markers, e.g. 'Alexa_488 Alexa_647'. A gap must be dark in all of them. "
+                         "Not the nuclear stain.")
+    gp.add_argument("--gap-nucleus-zarr", type=Path, default=None,
+                    help="OME-Zarr holding the nuclear channel (e.g. the clean-channel zarr). Default: --intensity.")
+    gp.add_argument("--gap-nucleus-channel", default="auto", type=str,
+                    help="Nuclear channel in --gap-nucleus-zarr (index or exact name, e.g. HOECHST_33342_clean). "
+                         "'auto' (default): the channel named like hoechst/dapi, preferring '..._clean'; "
+                         "'none': no nucleus exclusion.")
+    gp.add_argument("--gap-output", type=Path, default=None, help="Gap label OME-Zarr (1 = gap, 2 = not imaged).")
+    gp.add_argument("--gap-output-csv", type=Path, default=None, help="One-row gap summary CSV.")
+    gp.add_argument("--gap-output-qc", type=Path, default=None, help="Gap QC JSON.")
+    gp.add_argument("--gap-sample-id", default="", type=str, help="Value of the dataset_id column of the summary.")
+    gp.add_argument("--gap-smoothing", type=float, default=0.3, metavar="UM",
+                    help="Gaussian smoothing before thresholding (physical units). Keep it small: more "
+                         "smoothing blurs small holes into their bright rim.")
+    gp.add_argument("--gap-min-area", type=float, default=3.0, metavar="UM2",
+                    help="Gaps smaller than this (physical units^2) are ignored.")
+    gp.add_argument("--gap-core-min-area", type=float, default=1.5, metavar="UM2",
+                    help="A gap must contain a core at background of at least this area (physical units^2).")
+    gp.add_argument("--gap-seed-percentile", type=float, default=1.0, metavar="PCT")
+    gp.add_argument("--gap-min-contrast", type=float, default=0.25, metavar="FRACTION")
+    gp.add_argument("--gap-cell-percentile", type=float, default=10.0, metavar="PCT",
+                    help="Cell level of a channel = this (low) percentile of the labelled-cell interior (gain).")
+    gp.add_argument("--gap-core-threshold", type=float, default=0.2, metavar="0-1",
+                    help="A gap must contain a core where the normalized cell signal is below this.")
+    gp.add_argument("--gap-edge-threshold", type=float, default=0.65, metavar="0-1",
+                    help="A gap extends to where the normalized cell signal reaches this.")
+    gp.add_argument("--gap-max-floor-ratio", type=float, default=0.55, metavar="RATIO",
+                    help="No gap unless the gap floor is below this fraction of the darkest cell pixels.")
+    gp.add_argument("--gap-nucleus-factor", type=float, default=8.0, metavar="X",
+                    help="For a nuclear channel with background: nucleus = smoothed signal > this x the image median.")
+
+    args = parser.parse_args()
+    if args.gap_channels and not (args.gap_output and args.gap_output_csv and args.gap_output_qc):
+        parser.error("--gap-channels needs --gap-output, --gap-output-csv and --gap-output-qc")
+    return args
 
 
 def parse_token_list(text: str | None) -> list[str]:
@@ -147,20 +179,6 @@ def parse_ring_depths(text: str) -> tuple[float, ...]:
     return depths
 
 
-def find_nucleus_channel(spec: str | None, channel_names: list[str]) -> int | None:
-    """Index of the nuclear-stain channel: an explicit index/name, 'auto' (first channel named
-    like Hoechst/DAPI), or None ('none'/blank)."""
-    tokens = parse_token_list(spec)
-    if not tokens or tokens[0].lower() == "none":
-        return None
-    if tokens[0].lower() == "auto":
-        for i, name in enumerate(channel_names):
-            if re.search(r"hoechst|dapi", name, re.IGNORECASE):
-                return i
-        return None
-    return resolve_channels(tokens[:1], channel_names)[0]
-
-
 def resolve_channels(specs: list[str], channel_names: list[str]) -> list[int]:
     """Channel indices for `specs`: each an index or an exact channel name."""
     indices = []
@@ -175,6 +193,19 @@ def resolve_channels(specs: list[str], channel_names: list[str]) -> list[int]:
         else:
             raise ValueError(f"channel '{spec}' not found in {channel_names}")
     return indices
+
+
+def find_nucleus_channel(spec: str | None, channel_names: list[str]) -> int | None:
+    """Index of the nuclear-stain channel: an explicit index/name, 'auto' (the channel named
+    like Hoechst/DAPI, preferring '..._clean'), or None ('none'/blank)."""
+    tokens = parse_token_list(spec)
+    if not tokens or tokens[0].lower() == "none":
+        return None
+    if tokens[0].lower() == "auto":
+        matches = [i for i, name in enumerate(channel_names) if re.search(r"hoechst|dapi", name, re.IGNORECASE)]
+        clean = [i for i in matches if "clean" in channel_names[i].lower()]
+        return (clean or matches or [None])[0]
+    return resolve_channels(tokens[:1], channel_names)[0]
 
 
 # --- loading -----------------------------------------------------------------
@@ -299,7 +330,7 @@ class ChannelLevels:
     cell: float
     background: float = np.nan
     used: bool = True
-    seed_level: float = np.nan  # smoothed value below which a cell pixel is in the darkest seed_percentile
+    seed_level: float = np.nan  # gaps: smoothed value below which a cell pixel is in the darkest seed_percentile
 
     @property
     def floor_ratio(self) -> float:
@@ -327,7 +358,7 @@ class EmptyArea:
     seeds: np.ndarray
     threshold: float
     levels: list[ChannelLevels] = field(default_factory=list)
-    nucleus: np.ndarray | None = None  # pixels vetoed as nucleus (never gap)
+    nucleus: np.ndarray | None = None  # gaps: pixels vetoed as nucleus (never gap)
     gap_found: bool = False
 
     @property
@@ -367,6 +398,79 @@ def grow_from_seeds(signal: np.ndarray, imaged: np.ndarray, seeds: np.ndarray,
     return keep[regions]
 
 
+def estimate_empty_area(
+    image: np.ndarray,
+    labels: np.ndarray,
+    channels: list[int],
+    sigma_px: float = 2.0,
+    min_area_px: int = 25,
+    seed_percentile: float = 1.0,
+    min_contrast: float = 0.25,
+) -> EmptyArea:
+    """`image` is (C, Y, X), `labels` (Y, X). Empty pixels are dark in *every* channel
+    of `channels`, cells are dark in some channel almost everywhere; labels are only
+    used to scale the cell level."""
+    min_area_px = max(int(round(min_area_px)), 1)
+
+    imaged = ~remove_small_regions(~np.any(image != 0, axis=0), min_area_px)
+    weight = imaged.astype(np.float32)
+
+    labelled = labels > 0
+    interior = (ndi.distance_transform_edt(labelled) > 2 * sigma_px) & imaged
+    if not interior.any():
+        interior = labelled & imaged
+    reference = interior if interior.any() else imaged
+
+    smoothed = {c: smooth(image[c].astype(np.float32), weight, sigma_px) for c in channels}
+    levels = [ChannelLevels(c, float(np.median(smoothed[c][reference]))) for c in channels]
+
+    seeds = imaged.copy()
+    for lv in levels:
+        seeds &= smoothed[lv.channel] < np.percentile(smoothed[lv.channel][reference], seed_percentile)
+    seeds = remove_small_regions(seeds, min_area_px)
+
+    signal = np.zeros(image.shape[1:], np.float32)
+    result = EmptyArea(signal, imaged, np.zeros_like(imaged), seeds, 0.0, levels)
+    if not seeds.any():
+        return result
+
+    for lv in levels:
+        lv.background = float(np.median(smoothed[lv.channel][seeds]))
+        lv.used = lv.contrast >= min_contrast
+        if not lv.used:
+            continue
+        normalized = np.clip(
+            (image[lv.channel] - lv.background) / (lv.cell - lv.background), 0, 1
+        ).astype(np.float32)
+        np.maximum(signal, smooth(normalized, weight, sigma_px), out=signal)
+
+    if result.used:
+        result.threshold = EDGE_THRESHOLD
+        result.empty = remove_small_regions(
+            grow_from_seeds(signal, imaged, seeds, EDGE_THRESHOLD), min_area_px)
+    return result
+
+
+def empty_area_qc(empty: EmptyArea, channel_names: list[str]) -> dict:
+    """QC diagnostics of the estimation (what the empty area is not enough to tell)."""
+    imaged = int(empty.imaged.sum())
+    return {
+        "empty_threshold": empty.threshold,
+        "empty_background_ratio": empty.background_ratio,
+        "empty_seed_area_pct": 100.0 * int(empty.seeds.sum()) / imaged if imaged else float("nan"),
+        "empty_channels_used": [channel_names[c] for c in empty.used],
+        "empty_channel_levels": {
+            channel_names[lv.channel]: {
+                "background": round(lv.background, 2), "cell": round(lv.cell, 2), "used": lv.used,
+            }
+            for lv in empty.levels
+        },
+    }
+
+
+# --- gaps (optional) -------------------------------------------------------------
+
+
 def fill_small_holes(mask: np.ndarray, max_hole_px: int) -> np.ndarray:
     """Fill holes of `mask` smaller than `max_hole_px` pixels (specks inside a gap)."""
     holes = ndi.binary_fill_holes(mask) & ~mask
@@ -374,7 +478,7 @@ def fill_small_holes(mask: np.ndarray, max_hole_px: int) -> np.ndarray:
     return mask | (holes & ~big)
 
 
-def estimate_empty_area(
+def estimate_gaps(
     image: np.ndarray,
     labels: np.ndarray,
     channels: list[int],
@@ -394,8 +498,8 @@ def estimate_empty_area(
     """`image` is (C, Y, X), `labels` (Y, X). Gap = cell-free area, from the fluorescence of the
     cell-body markers `channels` (e.g. VE-cadherin + actin); a gap must be dark in ALL of them.
 
-    1. Nuclei (`nucleus_channel` > `nucleus_factor` x its image median) are never gap: a nucleus is
-       naturally dark in VE-cadherin/actin.
+    1. Nuclei (`nucleus_channel` > `nucleus_factor` x its image median, or its non-zero pixels for a
+       background-free "_clean" channel) are never gap: a nucleus is naturally dark in VE-cadherin/actin.
     2. Each channel is lightly smoothed (`sigma_px`, small so small holes survive).
     3. Seeds = pixels in the darkest `seed_percentile` of the labelled-cell interior in every channel
        at once; the background (gap floor) of a channel is its median inside the seeds. No seed, or a
@@ -417,8 +521,14 @@ def estimate_empty_area(
 
     nucleus = np.zeros_like(imaged)
     if nucleus_channel is not None:
-        hoechst = smooth(image[nucleus_channel].astype(np.float32), weight, sigma_px)
-        nucleus = imaged & (hoechst > nucleus_factor * np.median(hoechst[imaged]))
+        raw_nuc = image[nucleus_channel]
+        if np.median(raw_nuc[imaged]) > 0:
+            hoechst = smooth(raw_nuc.astype(np.float32), weight, sigma_px)
+            nucleus = imaged & (hoechst > nucleus_factor * np.median(hoechst[imaged]))
+        else:
+            # Background-free "clean" nuclear channel (zero outside the host nuclei): the nuclei are the
+            # non-zero pixels. A multiple of the median would be 0 here and smoothing would add a halo.
+            nucleus = imaged & (raw_nuc > 0)
     candidates = imaged & ~nucleus
 
     labelled = labels > 0
@@ -464,27 +574,95 @@ def estimate_empty_area(
     return result
 
 
-def empty_area_qc(empty: EmptyArea, channel_names: list[str]) -> dict:
-    """QC diagnostics of the estimation (what the empty area is not enough to tell)."""
-    imaged = int(empty.imaged.sum())
-    return {
-        "empty_threshold": empty.threshold,
-        "empty_background_ratio": empty.background_ratio,
-        "empty_seed_area_pct": 100.0 * int(empty.seeds.sum()) / imaged if imaged else float("nan"),
-        "empty_channels_used": [channel_names[c] for c in empty.used],
-        "empty_channel_levels": {
-            channel_names[lv.channel]: {
-                "background": round(lv.background, 2), "cell": round(lv.cell, 2), "used": lv.used,
-                "floor_ratio": round(lv.floor_ratio, 3) if np.isfinite(lv.floor_ratio) else None,
-            }
-            for lv in empty.levels
-        },
-        "empty_gap_found": empty.gap_found,
-        "empty_n_gaps": int(ndi.label(empty.empty)[1]),
-        "empty_nucleus_veto_area_pct": (
-            100.0 * int(empty.nucleus.sum()) / imaged if imaged and empty.nucleus is not None else None
-        ),
+def gap_qc(gaps: EmptyArea, channel_names: list[str]) -> dict:
+    """QC diagnostics of the gap estimation: the empty-area QC plus floor ratios and nucleus exclusion."""
+    qc = empty_area_qc(gaps, channel_names)
+    for lv in gaps.levels:
+        qc["empty_channel_levels"][channel_names[lv.channel]]["floor_ratio"] = (
+            round(lv.floor_ratio, 3) if np.isfinite(lv.floor_ratio) else None
+        )
+    imaged = int(gaps.imaged.sum())
+    qc["empty_gap_found"] = gaps.gap_found
+    qc["empty_n_gaps"] = int(ndi.label(gaps.empty)[1])
+    qc["empty_nucleus_veto_area_pct"] = (
+        100.0 * int(gaps.nucleus.sum()) / imaged if imaged and gaps.nucleus is not None else None
+    )
+    return qc
+
+
+def quantify_gaps(args, image: np.ndarray, labels: np.ndarray, channel_names: list[str],
+                  pixel: tuple[float, float], unit: str | None) -> None:
+    """Estimate the gaps and write --gap-output, --gap-output-csv and --gap-output-qc."""
+    py, px = pixel
+    gap_channels = resolve_channels(parse_token_list(args.gap_channels), channel_names)
+
+    # Nuclear channel: from --gap-nucleus-zarr (e.g. the clean-channel zarr) or from --intensity.
+    nuc_src = mm.ZarrManager(str(args.gap_nucleus_zarr)) if args.gap_nucleus_zarr else None
+    nuc_image, nuc_names = image, channel_names
+    if nuc_src is not None:
+        nuc_image = extract_plane(nuc_src.data[args.intensity_resolution_level], nuc_src.metadata["axes"],
+                                  args.timepoint, keep_channel=True)
+        nuc_names = list(nuc_src.metadata.get("channel_names")
+                         or [f"Channel {i}" for i in range(nuc_image.shape[0])])
+        nuc_src.close()
+    nucleus_idx = find_nucleus_channel(args.gap_nucleus_channel, nuc_names)
+    plane = None
+    if nucleus_idx is not None:
+        plane = match_shape(nuc_image[nucleus_idx], image.shape[1:])
+        if nuc_src is None:
+            gap_channels = [c for c in gap_channels if c != nucleus_idx]
+    if not gap_channels:
+        raise ValueError("--gap-channels needs at least one channel other than the nuclear one")
+    nucleus_name = nuc_names[nucleus_idx] if nucleus_idx is not None else None
+    print(f"Gap channels: {[channel_names[c] for c in gap_channels]}; nucleus exclusion channel: {nucleus_name}")
+
+    um2 = py * px
+    stacked = image if plane is None else np.concatenate([image, plane[None]])
+    gaps = estimate_gaps(
+        stacked, labels, gap_channels, sigma_px=args.gap_smoothing / px, min_area_px=args.gap_min_area / um2,
+        seed_percentile=args.gap_seed_percentile, min_contrast=args.gap_min_contrast,
+        nucleus_channel=None if plane is None else image.shape[0], nucleus_factor=args.gap_nucleus_factor,
+        cell_percentile=args.gap_cell_percentile, core_threshold=args.gap_core_threshold,
+        edge_threshold=args.gap_edge_threshold, core_min_px=args.gap_core_min_area / um2,
+        max_floor_ratio=args.gap_max_floor_ratio, imaged_min_px=GAP_NOT_IMAGED_MIN_AREA_UM2 / um2,
+    )
+
+    out = np.zeros(labels.shape, np.uint8)
+    out[gaps.empty] = 1
+    out[~gaps.imaged] = 2
+    out_unit = NGFF_UNITS.get(unit, unit) or "micrometer"
+    mm.ArrayManager(out, metadata={"axes": "yx", "scales": [(py, px)], "units": (out_unit, out_unit),
+                                   "data_type": "label", "name": Path(str(args.gap_output)).name},
+                    chunks=(1024, 1024)).to_zarr(str(args.gap_output), ngff_version="0.5", overwrite=True)
+
+    regions, n_gaps = ndi.label(gaps.empty)
+    areas = np.bincount(regions.ravel())[1:] * um2 if n_gaps else np.zeros(0)
+    imaged_px = int(gaps.imaged.sum())
+    row = {
+        "dataset_id": args.gap_sample_id, "n_cells": int(len(np.unique(labels[labels > 0]))),
+        "image_area": labels.size * um2, "imaged_area": imaged_px * um2,
+        "gap_area": int(gaps.empty.sum()) * um2,
+        "gap_pct": 100.0 * int(gaps.empty.sum()) / imaged_px if imaged_px else float("nan"),
+        "n_gaps": int(n_gaps), "largest_gap_area": float(areas.max()) if n_gaps else 0.0,
+        "gap_found": gaps.gap_found, "pixel_size_y": py, "pixel_size_x": px, "unit": unit,
+        "gap_channels": " ".join(channel_names[c] for c in gap_channels), "nucleus_channel": nucleus_name or "",
+        "min_gap_area_um2": args.gap_min_area, "min_gap_core_area_um2": args.gap_core_min_area,
     }
+    with open(args.gap_output_csv, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(row))
+        writer.writeheader()
+        writer.writerow(row)
+
+    qc = {
+        **gap_qc(gaps, channel_names),
+        "gap_channels": [channel_names[c] for c in gap_channels], "nucleus_channel": nucleus_name,
+        "parameters": {k: v for k, v in vars(args).items() if k.startswith("gap_") and "output" not in k},
+    }
+    args.gap_output_qc.write_text(json.dumps(qc, indent=2, default=str))
+
+    print(f"{n_gaps} gap(s), {row['gap_area']:.1f} um2 = {row['gap_pct']:.4f} % of the imaged area "
+          f"(gaps below {args.gap_min_area} um2 or without a {args.gap_core_min_area} um2 core are not counted)")
+    print(f"Wrote gaps to {args.gap_output}")
 
 
 def main():
@@ -525,36 +703,20 @@ def main():
 
     specs = parse_token_list(args.empty_channels)
     empty_channels = resolve_channels(specs, channel_names) if specs else list(range(image.shape[0]))
-    nucleus_channel = find_nucleus_channel(args.empty_nucleus_channel, channel_names)
-    if nucleus_channel is not None:
-        empty_channels = [c for c in empty_channels if c != nucleus_channel]
-        print(f"Empty-area nucleus veto channel: {channel_names[nucleus_channel]}")
     print(f"Empty-area channels: {[channel_names[c] for c in empty_channels]}")
 
     empty = estimate_empty_area(
         image, labels, empty_channels,
         sigma_px=args.empty_smoothing / px, min_area_px=args.empty_min_area / (py * px),
         seed_percentile=args.empty_seed_percentile, min_contrast=args.empty_min_contrast,
-        nucleus_channel=nucleus_channel, nucleus_factor=args.empty_nucleus_factor,
-        cell_percentile=args.empty_cell_percentile, core_threshold=args.empty_core_threshold,
-        edge_threshold=args.empty_edge_threshold,
-        core_min_px=args.empty_core_min_area / (py * px), max_floor_ratio=args.empty_max_floor_ratio,
-        imaged_min_px=NOT_IMAGED_MIN_AREA_UM2 / (py * px),
     )
     qc = {
         **empty_area_qc(empty, channel_names),
         "empty_channels": [channel_names[c] for c in empty_channels],
-        "empty_nucleus_channel": channel_names[nucleus_channel] if nucleus_channel is not None else None,
-        "empty_nucleus_factor": args.empty_nucleus_factor,
         "empty_smoothing_um": args.empty_smoothing,
         "empty_min_area_um2": args.empty_min_area,
-        "empty_core_min_area_um2": args.empty_core_min_area,
         "empty_seed_percentile": args.empty_seed_percentile,
         "empty_min_contrast": args.empty_min_contrast,
-        "empty_cell_percentile": args.empty_cell_percentile,
-        "empty_core_threshold": args.empty_core_threshold,
-        "empty_edge_threshold": args.empty_edge_threshold,
-        "empty_max_floor_ratio": args.empty_max_floor_ratio,
     }
     args.output_empty_qc.write_text(json.dumps(qc, indent=2))
 
@@ -572,6 +734,9 @@ def main():
     mm.ArrayManager(region_image, metadata=out_metadata, chunks=(1024, 1024)).to_zarr(
         str(args.output), ngff_version="0.5", overwrite=True
     )
+
+    if args.gap_channels:
+        quantify_gaps(args, image, labels, channel_names, (py, px), unit)
 
     source.close()
     intensity_source.close()

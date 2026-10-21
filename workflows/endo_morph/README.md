@@ -113,58 +113,51 @@ and `cell_<channel>_mean`. `R1_area_px` ... `RN_area_px` give the number of
 pixels in each band (the mean is `NaN` for a band with no pixel). A cell counts
 as measured if stage 8 painted any band pixel for it.
 
-### Empty area (gaps) -- stage 8
+### Empty area -- stage 8
 
-The empty area is decided by the fluorescence signal alone, never by the labels. Cellpose is
-not perfect in either direction: it can miss cells (unlabelled pixels that are not empty) and its
-masks can cover cell-free pixels (labelled pixels that *are* empty). Both are handled correctly by
-looking only at the signal. Labels are used for one thing only: to set the brightness scale of
-"cell". Pixels that are zero in every channel (e.g. padding outside the acquired field) are **not
+The empty area is decided by the fluorescence signal alone, never by the
+labels. Cellpose is not perfect in either direction: it can miss cells
+(unlabelled pixels that are not empty) and its masks can cover cell-free
+pixels (labelled pixels that *are* empty). Both are handled correctly by
+looking only at the signal.
+
+Empty pixels are dark in **every** empty-area channel. Cells are dark in *some*
+channel almost everywhere -- e.g. the cytoplasm has little of a junction
+marker, a nucleus has little of any cytoplasmic marker -- so the steps below
+combine the channels. Pixels that
+are zero in every channel (e.g. padding outside the acquired field) are **not
 imaged** and are left out of all area percentages.
 
-A gap is dark in **every** empty-area channel. Use the cell-body markers (e.g. VE-cadherin and
-actin) as `endomorph_empty_channels`: a channel that cannot tell a gap from cytoplasm (a nuclear
-stain, a dim marker) must not be in the list, because a gap has to be dark in all of them.
-Nuclei are dark in VE-cadherin and actin, so they are excluded explicitly with
-`endomorph_empty_nucleus_channel`.
-
-1. **Nuclei.** If `endomorph_empty_nucleus_channel` is set, the pixels where that channel
-   (smoothed) is brighter than `endomorph_empty_nucleus_factor` (default 8) times its image median
-   are nuclei. They are never gap, and are left out when the cell level is measured.
-2. **Smoothing, cell level and seeds.** Every empty-area channel is lightly smoothed
-   (`endomorph_empty_smoothing`, default 0.3 um; more smoothing blurs a small hole into its bright
-   rim). The *cell level* of a channel is a **low** percentile (`endomorph_empty_cell_percentile`,
-   default 10) of the interior of the labelled cells (farther than twice the smoothing width from
-   the edge of the labelled area). Using a low percentile instead of the median is the "gain":
-   ordinary cytoplasm, even dim, counts as cell, and only real background stays low. A pixel
-   seeds an empty region when it is darker than `endomorph_empty_seed_percentile` (default 1 %) of
-   the cell pixels **in every channel at once**.
-3. **Background level per channel.** The median inside the seeds. **No seed means no empty
-   area**, which is what a confluent field gives. As a second guard, no gap is reported unless
-   the background of the best channel is below `endomorph_empty_max_floor_ratio` (default 0.55)
-   times the seed level (the darkest cell pixels), i.e. the gap is clearly darker than any cell.
-   A channel with too little contrast (`endomorph_empty_min_contrast`, default 0.25, compared to
-   `(cell - background) / cell`) is left out.
-4. **Cell signal.** `clip((smoothed - background) / (cell - background), 0, 1)` is 0 on
-   background and 1 on anything cell-like, per channel. The cell signal is the maximum over the
-   channels (cytoplasm that is dim in one channel is rescued by the others) and is 1 on nuclei.
-5. **Empty** = the connected regions where the cell signal is below
-   `endomorph_empty_edge_threshold` (default 0.65) **that contain a core** where it is below
-   `endomorph_empty_core_threshold` (default 0.2) over at least `endomorph_empty_core_min_area`
-   (default 1.5 um^2): the core makes sure the region is really at background and not just dim.
-   Small holes inside a gap are filled. Regions smaller than `endomorph_empty_min_area` (default
-   3 um^2) are ignored. Labels are not consulted, so a cell-free hole inside a cell mask counts as
-   empty. The outline of a gap hardly depends on the edge threshold (it moves less than 1 px
-   between 0.5 and 0.8).
-
-> **Size limit: small regions are not included in the gap percentage.** A gap is counted only if it contains a
-> core at background of at least `endomorph_empty_core_min_area` (default 1.5 um^2, about 43 px at 0.186 um/px) and
-> is at least `endomorph_empty_min_area` (default 3 um^2, about 87 px) in total. Smaller dark spots (single pits of a few
-> pixels, very narrow slits) are **not** counted, so `empty_area_pct` is a slight underestimate. In the validation
-> image (B2_F3) these spots would add roughly 195 um^2, i.e. about 0.06 percentage points (+10 % of the gap area); this is
-> an upper bound (measured with an experimental finer detector that was not adopted because it can also pick up dim
-> cytoplasm). The same spots are not counted in the number of gaps. Lower the two parameters above to include smaller
-> gaps (at the risk of counting noise), and use the full-resolution MIP (pyramid level 0).
+1. **Cell level per channel.** Every channel in `endomorph_empty_channels`
+   (leave out a channel that is dark over most of the cell, such as a nuclei stain) is smoothed (`endomorph_empty_smoothing`, default 2
+   µm, ignoring pixels outside the acquired field). Its *cell level* is the
+   median over the interior of the labelled cells (pixels farther than twice
+   the smoothing width from the edge of the labelled area). This is the only
+   use of the labels: setting a scale, never deciding what is empty.
+2. **Seeds.** A pixel seeds an empty region when it is darker than
+   `endomorph_empty_seed_percentile` (default 1 %) of the cell pixels **in every
+   channel at once**. Nuclei and cytoplasm are dark in one or two channels but
+   never in all of them, so they are not seeded. Seeds smaller than
+   `endomorph_empty_min_area` are dropped. **No seed means no empty area**,
+   which is what a confluent field gives -- there is no threshold to tune for
+   that case.
+3. **Background level per channel.** Measured where it really is background:
+   the median inside the seeds. Taking a low percentile of the whole image
+   instead would make the background depend on how much of the field happens
+   to be empty, and the measured area would change with the pyramid level.
+4. **Cell signal.** `clip((raw - background) / (cell - background), 0, 1)` is 0
+   on background and 1 on anything cell-like, bright structures included, and
+   is then smoothed. Smoothing *after* the cap keeps the edge of a gap in
+   place; smoothing raw intensities first would let bright junctions spill into
+   the gap and shrink it. The cell signal is the maximum over the channels, so
+   cytoplasm that is dim in one channel is rescued by the others. A channel
+   with too little contrast (`endomorph_empty_min_contrast`, default 0.25,
+   compared to `(cell - background) / cell`) is left out.
+5. **Empty** = the connected regions where the cell signal is below 0.5 (the
+   midpoint between background and cell level, i.e. the edge of the region)
+   that contain a seed. Labels are not consulted, so a cell-free hole inside a
+   cell mask counts as empty. Regions smaller than `endomorph_empty_min_area`
+   (default 25 µm²) are ignored.
 
 The summary reports these complementary percentages of the imaged area:
 
@@ -181,11 +174,11 @@ fluorescence disagree.
 
 | Symptom | What to change |
 | --- | --- |
-| A field with visible gaps reports 0 % empty | Nothing was dark in every channel at once, or the gap is not clearly darker than the cells (`endomorph_empty_max_floor_ratio`). Check that `endomorph_empty_channels` holds only cell-body markers (not a nuclear stain), and look at `empty_channel_levels` in the QC json |
-| Small gaps are missed | They are below the size limit (see the note in the algorithm). Lower `endomorph_empty_smoothing` (0.25) or `endomorph_empty_min_area` / `endomorph_empty_core_min_area`; raise `endomorph_empty_core_threshold` (0.3) |
-| Nuclei are marked empty | Set `endomorph_empty_nucleus_channel`; lower `endomorph_empty_nucleus_factor` if dim nuclei are still marked |
-| Dim cytoplasm inside cells is marked empty | Lower `endomorph_empty_core_threshold` (0.15), or restrict `endomorph_empty_channels` to the channels that fill the cell |
-| Gaps look too small / too large | Raise / lower `endomorph_empty_edge_threshold` (the area changes by < 10 % between 0.5 and 0.8) |
+| A field with visible gaps reports 0 % empty | Nothing was dark in every channel at once. Raise `endomorph_empty_seed_percentile` (e.g. 2 or 5), or check whether one channel is bright everywhere (background too high, or a channel that should be left out of `endomorph_empty_channels`) |
+| Nuclei or dim cytoplasm are marked empty | Lower `endomorph_empty_seed_percentile` (e.g. 0.5, 0.1): seeds must be pixels that are unambiguously background |
+| Cytoplasm inside cells is marked empty | Increase `endomorph_empty_smoothing`, or restrict `endomorph_empty_channels` to the channels that fill the cell |
+| Thin protrusions are marked empty | Increase `endomorph_empty_smoothing` |
+| Small gaps are missed | Lower `endomorph_empty_smoothing` or `endomorph_empty_min_area` |
 
 Check `<id>_endomorph_empty_qc.json` (in the work directory of
 `PYMIF_ENDOMORPH_REGIONS`) before trusting the numbers: `empty_channel_levels`
@@ -235,19 +228,12 @@ Channels are given as the exact `channel_names` entry of the MIP (e.g. `Alexa_48
 
 | CSV column | Purpose |
 | --- | --- |
-| `endomorph_empty_channels` | Channels whose signal means cells are present; a gap must be dark in all of them. Defaults to all channels; set it to the cell-body markers only (e.g. VE-cadherin and actin). |
-| `endomorph_empty_nucleus_channel` | Nuclear-stain channel: its bright pixels are nuclei and never gap. Blank = `auto`: the first channel whose name contains `hoechst` or `dapi` (case-insensitive), if any; `none` = no nucleus exclusion. Removed from `endomorph_empty_channels` if listed there. |
+| `endomorph_empty_channels` | Channels whose signal means cells are present. Defaults to all channels; leave out one that stains only part of the cell, such as a nuclei stain (the rest of the cell is as dark as background in that channel, which makes the empty area smaller). |
 | `endomorph_measure_channels` | Stage 9: channels whose mean is computed in every band and in the whole cell. Defaults to all channels. |
-| `endomorph_empty_smoothing` | Gaussian smoothing of the signal before thresholding, in physical units (e.g. um). Defaults to `0.3`. |
-| `endomorph_empty_min_area` | Empty regions smaller than this (physical units^2) are ignored. Defaults to `3.0`. |
-| `endomorph_empty_core_min_area` | A gap must contain a core at background of at least this area (physical units^2). Defaults to `1.5`. |
+| `endomorph_empty_smoothing` | Gaussian smoothing of the signal before thresholding, in physical units (e.g. µm). Defaults to `2.0`. |
+| `endomorph_empty_min_area` | Empty regions smaller than this (physical units²) are ignored. Defaults to `25.0`. |
 | `endomorph_empty_seed_percentile` | An empty region starts where a pixel is darker than this percentile of the cell pixels in *every* `endomorph_empty_channels` channel at once. No such pixel means no empty area (e.g. a confluent field). Defaults to `1.0`. |
 | `endomorph_empty_min_contrast` | A channel contributes to the cell signal only if `(cell - background) / cell` reaches this. Defaults to `0.25`. |
-| `endomorph_empty_cell_percentile` | The cell level of a channel is this percentile of the labelled-cell interior. Lower = more gain. Defaults to `10`. |
-| `endomorph_empty_core_threshold` | A gap must contain a core where the normalized cell signal (0 = background, 1 = cell) is below this. Defaults to `0.2`. |
-| `endomorph_empty_edge_threshold` | A gap extends to where the normalized cell signal reaches this. Defaults to `0.65`. |
-| `endomorph_empty_max_floor_ratio` | No gap unless its background is below this fraction of the darkest cell pixels. Defaults to `0.55`. |
-| `endomorph_empty_nucleus_factor` | A pixel is nucleus when its nuclear signal exceeds this multiple of the image median. Defaults to `8`. |
 
 See [Algorithm](#algorithm) for what each of these settings does. The logic is
 ported unchanged from the standalone `endo_morph` scripts
@@ -295,6 +281,52 @@ Once all datasets are done, two merged files are written to
 
 They are overwritten on every run (a `-resume` that reuses cached results
 rewrites them from the same inputs).
+
+## Optional: gaps (cell-free area)
+
+`PYMIF_ENDOMORPH_REGIONS` can also quantify the gaps with a finer method than the empty area of stage 8, into
+**separate outputs**. The regions zarr, its empty label (`N+1`), the empty-area QC and the `empty_area_*` summary columns
+are computed exactly as without it. It is **off unless `--gap_channels` is given**, and it is controlled by workflow
+parameters, not CSV columns, so the CSV (part of every task's input) stays unchanged:
+
+```bash
+nextflow run .../workflows/endo_morph/main.nf -lib .../lib --input_csv input.csv \
+    --gap_channels "Alexa_488 Alexa_647" \
+    --gap_nucleus_channel HOECHST_33342_clean \
+    --gaps_outdir /absolute/path/results_gaps \
+    -resume
+```
+
+- `--gap_channels`: the cell-body markers (e.g. VE-cadherin and actin) of the MIP; a gap must be dark in all of them.
+  Not the nuclear stain.
+- `--gap_nucleus_channel`: the nuclear channel of the clean-channel zarr, `<channel>_clean` (the nuclear stain with the
+  parasite DNA removed, e.g. `HOECHST_33342_clean`; it must match exactly). Its bright pixels are host nuclei and are
+  never gap; parasite DNA is not excluded. Default `auto` (the channel named like hoechst/dapi, preferring `..._clean`);
+  `none` = no nucleus exclusion.
+- `--gaps_outdir`: absolute output folder. Per dataset: `<id>_gaps.ome.zarr` (1 = gap, 2 = not imaged),
+  `<id>_gaps_summary.csv` (`gap_area`, `gap_pct`, `n_gaps`, `largest_gap_area`, ...), `<id>_gaps_qc.json`; all summaries
+  in `gaps_summary_merged.csv`.
+- Optional: `--gap_extra_args "--gap-smoothing 0.25 ..."`, any other `--gap-*` option of `create_endomorph_regions.py`.
+
+The gaps use the same images and resolution levels as the bands (the MIP at `resolution_level`, default 0 = full
+resolution, which is what the method was validated on).
+
+**Method.** A gap is dark in every gap channel and is not a host nucleus. Each channel is lightly smoothed (0.3 µm,
+`--gap-smoothing`). Its cell level is a low percentile (10, `--gap-cell-percentile`) of the labelled-cell interior, so
+ordinary cytoplasm counts as cell; the labels only set this scale. The background is measured in seeds, pixels darker
+than the darkest 1 % of the cells in every channel at once. No gap is reported unless that background is clearly darker
+than the darkest cells (`--gap-max-floor-ratio`, 0.55), which avoids inventing gaps in a confluent field. A gap is a
+region of normalized cell signal below 0.65 (`--gap-edge-threshold`) that contains a core below 0.2
+(`--gap-core-threshold`).
+
+**Small regions are not included in the gap percentage.** A gap is counted only if it has a core at background of at
+least 1.5 µm² (about 43 px at 0.186 µm/px) and is at least 3 µm² (about 87 px) in total (`--gap-core-min-area`,
+`--gap-min-area`). Smaller dark spots (pits of a few pixels, very narrow slits) are not counted, neither in the area nor
+in the number of gaps, so `gap_pct` is a slight underestimate (about +0.06 percentage points, +10 % of the gap area, in
+one validation image; an upper bound).
+
+Check `<id>_gaps_qc.json` first: `nucleus_channel` should be `HOECHST_33342_clean`, and where a gap exists the
+`floor_ratio` of the used channels should be below about 0.55.
 
 ## Running the workflow
 

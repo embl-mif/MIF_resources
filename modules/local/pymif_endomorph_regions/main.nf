@@ -2,13 +2,17 @@ process PYMIF_ENDOMORPH_REGIONS {
     tag "${meta.id}"
     label 'process_medium'
     container 'ghcr.io/embl-mif/pymif:0.5.0'
+    // Optional gaps (params.gap_channels): copied to params.gaps_outdir.
+    publishDir { params.gaps_outdir ?: '.' }, pattern: '*_gaps*', mode: 'copy', enabled: params.gap_channels as boolean
 
     input:
-    tuple val(meta), path(labels_zarr), path(intensity_zarr)
+    // nucleus_zarr (the clean-channel zarr) is only read for the optional gaps.
+    tuple val(meta), path(labels_zarr), path(intensity_zarr), path(nucleus_zarr, stageAs: 'gap_nucleus/*')
 
     output:
     tuple val(meta), path(output_zarr_link), emit: zarr
     tuple val(meta), path(empty_qc_json)   , emit: qc
+    tuple val(meta), path("${meta.id}_gaps.ome.zarr"), path("${meta.id}_gaps_summary.csv"), path("${meta.id}_gaps_qc.json"), emit: gaps, optional: true
     path "versions.yml"                    , emit: versions
 
     script:
@@ -33,13 +37,17 @@ process PYMIF_ENDOMORPH_REGIONS {
     def emptyMinAreaArg = meta.endomorph_empty_min_area != null ? "--empty-min-area ${meta.endomorph_empty_min_area}" : ""
     def emptySeedPercentileArg = meta.endomorph_empty_seed_percentile != null ? "--empty-seed-percentile ${meta.endomorph_empty_seed_percentile}" : ""
     def emptyMinContrastArg = meta.endomorph_empty_min_contrast != null ? "--empty-min-contrast ${meta.endomorph_empty_min_contrast}" : ""
-    def emptyNucleusChannelArg = meta.endomorph_empty_nucleus_channel ? "--empty-nucleus-channel ${shellQuote(meta.endomorph_empty_nucleus_channel)}" : ""
-    def emptyNucleusFactorArg = meta.endomorph_empty_nucleus_factor != null ? "--empty-nucleus-factor ${meta.endomorph_empty_nucleus_factor}" : ""
-    def emptyCoreMinAreaArg = meta.endomorph_empty_core_min_area != null ? "--empty-core-min-area ${meta.endomorph_empty_core_min_area}" : ""
-    def emptyCellPercentileArg = meta.endomorph_empty_cell_percentile != null ? "--empty-cell-percentile ${meta.endomorph_empty_cell_percentile}" : ""
-    def emptyCoreThresholdArg = meta.endomorph_empty_core_threshold != null ? "--empty-core-threshold ${meta.endomorph_empty_core_threshold}" : ""
-    def emptyEdgeThresholdArg = meta.endomorph_empty_edge_threshold != null ? "--empty-edge-threshold ${meta.endomorph_empty_edge_threshold}" : ""
-    def emptyMaxFloorRatioArg = meta.endomorph_empty_max_floor_ratio != null ? "--empty-max-floor-ratio ${meta.endomorph_empty_max_floor_ratio}" : ""
+    // Workflow params, not meta: toggling the gaps must not change meta (part of every task's hash).
+    def gapArgs = params.gap_channels ? [
+        "--gap-channels ${shellQuote(params.gap_channels)}",
+        "--gap-nucleus-zarr \"${nucleus_zarr}\"",
+        "--gap-nucleus-channel ${shellQuote(params.gap_nucleus_channel ?: 'auto')}",
+        "--gap-sample-id ${shellQuote(meta.id)}",
+        "--gap-output \"${meta.id}_gaps.ome.zarr\"",
+        "--gap-output-csv \"${meta.id}_gaps_summary.csv\"",
+        "--gap-output-qc \"${meta.id}_gaps_qc.json\"",
+        params.gap_extra_args ?: '',
+    ].join(' ') : ""
 
     """
     mkdir -p \$(dirname ${shellQuote(output_zarr)})
@@ -59,13 +67,7 @@ process PYMIF_ENDOMORPH_REGIONS {
         ${emptyMinAreaArg} \
         ${emptySeedPercentileArg} \
         ${emptyMinContrastArg} \
-        ${emptyNucleusChannelArg} \
-        ${emptyNucleusFactorArg} \
-        ${emptyCoreMinAreaArg} \
-        ${emptyCellPercentileArg} \
-        ${emptyCoreThresholdArg} \
-        ${emptyEdgeThresholdArg} \
-        ${emptyMaxFloorRatioArg}
+        ${gapArgs}
 
     if [ ! -e ${shellQuote(output_zarr)}/zarr.json ] && [ ! -e ${shellQuote(output_zarr)}/.zgroup ]; then
         echo "ERROR: expected zarr store not found: ${output_zarr}" >&2

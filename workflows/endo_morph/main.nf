@@ -90,12 +90,6 @@ workflow {
             def endomorph_empty_min_area_value = Utils.normalizeOptionalText(row.endomorph_empty_min_area)
             def endomorph_empty_seed_percentile_value = Utils.normalizeOptionalText(row.endomorph_empty_seed_percentile)
             def endomorph_empty_min_contrast_value = Utils.normalizeOptionalText(row.endomorph_empty_min_contrast)
-            def endomorph_empty_nucleus_factor_value = Utils.normalizeOptionalText(row.endomorph_empty_nucleus_factor)
-            def endomorph_empty_core_min_area_value = Utils.normalizeOptionalText(row.endomorph_empty_core_min_area)
-            def endomorph_empty_cell_percentile_value = Utils.normalizeOptionalText(row.endomorph_empty_cell_percentile)
-            def endomorph_empty_core_threshold_value = Utils.normalizeOptionalText(row.endomorph_empty_core_threshold)
-            def endomorph_empty_edge_threshold_value = Utils.normalizeOptionalText(row.endomorph_empty_edge_threshold)
-            def endomorph_empty_max_floor_ratio_value = Utils.normalizeOptionalText(row.endomorph_empty_max_floor_ratio)
 
             def meta = row + [
                 id                       : dataset_id,
@@ -191,16 +185,8 @@ workflow {
                 // exact channel name). Blank = all channels; leave out one
                 // that stains only part of the cell (e.g. a nuclei stain).
                 endomorph_empty_channels          : Utils.normalizeOptionalText(row.endomorph_empty_channels),
-                // Nuclear-stain channel (index or name): bright pixels are nuclei, never gap.
-                endomorph_empty_nucleus_channel   : Utils.normalizeOptionalText(row.endomorph_empty_nucleus_channel),
-                endomorph_empty_nucleus_factor    : endomorph_empty_nucleus_factor_value ? endomorph_empty_nucleus_factor_value as float : 8.0,
-                endomorph_empty_smoothing         : endomorph_empty_smoothing_value ? endomorph_empty_smoothing_value as float : 0.3,
-                endomorph_empty_min_area          : endomorph_empty_min_area_value ? endomorph_empty_min_area_value as float : 3.0,
-                endomorph_empty_core_min_area     : endomorph_empty_core_min_area_value ? endomorph_empty_core_min_area_value as float : 1.5,
-                endomorph_empty_cell_percentile   : endomorph_empty_cell_percentile_value ? endomorph_empty_cell_percentile_value as float : 10.0,
-                endomorph_empty_core_threshold    : endomorph_empty_core_threshold_value ? endomorph_empty_core_threshold_value as float : 0.2,
-                endomorph_empty_edge_threshold    : endomorph_empty_edge_threshold_value ? endomorph_empty_edge_threshold_value as float : 0.65,
-                endomorph_empty_max_floor_ratio   : endomorph_empty_max_floor_ratio_value ? endomorph_empty_max_floor_ratio_value as float : 0.55,
+                endomorph_empty_smoothing         : endomorph_empty_smoothing_value ? endomorph_empty_smoothing_value as float : 2.0,
+                endomorph_empty_min_area          : endomorph_empty_min_area_value ? endomorph_empty_min_area_value as float : 25.0,
                 endomorph_empty_seed_percentile   : endomorph_empty_seed_percentile_value ? endomorph_empty_seed_percentile_value as float : 1.0,
                 endomorph_empty_min_contrast      : endomorph_empty_min_contrast_value ? endomorph_empty_min_contrast_value as float : 0.25,
                 endomorph_cells_output_name       : resolved_endomorph_cells_output,
@@ -318,13 +304,19 @@ workflow {
      * a label OME-Zarr. A cell with no painted band pixel was excluded for
      * touching the image border.
      *
+     * With --gap_channels it also quantifies the gaps (cell-free area) into
+     * separate outputs, excluding the host nuclei of the clean-channel zarr;
+     * the regions zarr and empty-area QC are unchanged by it.
+     *
      * Expected output:
-     * tuple(meta, regions_zarr)   (and .qc: tuple(meta, empty_qc_json))
+     * tuple(meta, regions_zarr)   (and .qc: tuple(meta, empty_qc_json),
+     * .gaps: tuple(meta, gaps_zarr, gaps_summary_csv, gaps_qc_json) if --gap_channels)
      */
     ch_regions_inputs = CELLPOSE_FINAL.out.labels
         .map { meta, labels -> tuple(meta.id, meta, labels) }
         .join(PYMIF_MIP.out.zarr.map { meta, mip -> tuple(meta.id, mip) })
-        .map { id, meta, labels, mip -> tuple(meta, labels, mip) }
+        .join(PYMIF_CLEAN_CHANNEL.out.zarr.map { meta, clean -> tuple(meta.id, clean) })
+        .map { id, meta, labels, mip, clean -> tuple(meta, labels, mip, clean) }
 
     PYMIF_ENDOMORPH_REGIONS(ch_regions_inputs)
 
@@ -359,5 +351,19 @@ workflow {
         PYMIF_ENDOMORPH_FEATURES.out.csv.map { meta, cells, summary -> summary }.collect(),
         merged_dir
     )
+
+    /*
+     * Optional gaps (--gap_channels): the per-dataset outputs are copied to
+     * params.gaps_outdir by PYMIF_ENDOMORPH_REGIONS; merge their summaries.
+     */
+    if (params.gap_channels) {
+        if (!params.gaps_outdir || !new File(params.gaps_outdir.toString()).isAbsolute()) {
+            throw new IllegalArgumentException("--gaps_outdir must be an absolute path when --gap_channels is set")
+        }
+
+        PYMIF_ENDOMORPH_REGIONS.out.gaps
+            .map { meta, zarr, summary, qc -> summary }
+            .collectFile(name: 'gaps_summary_merged.csv', keepHeader: true, skip: 1, storeDir: params.gaps_outdir.toString())
+    }
 
 }
