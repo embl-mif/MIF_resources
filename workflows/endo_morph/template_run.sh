@@ -22,6 +22,8 @@ export NF_PATH="/home/$USER/projects/mif_resources/workflows/endo_morph/main.nf"
 export LIB_PATH="/home/$USER/projects/mif_resources/lib" # <--- MODIFY
 export WDIR="/PATH/TO/WORK/DIRECTORY" # <---------------- MODIFY TO YOUR DESIRED WORK LOCATION
 export CSV_PATH="/PATH/TO/batch.csv" # <----------------- MODIFY
+# Gaps (empty area) are set per row in the CSV, e.g. endomorph_empty_channels="Alexa_488 Alexa_647"
+# (cell-body markers) and endomorph_empty_nucleus_channel=HOECHST_33342_clean (see README.md).
 export MDL="/g/mif-hd/shared/cellpose_models/cpsam" # <--- MODIFY IF USING A DIFFERENT MODEL
 
 # The merged cells/summary CSVs are saved next to the input csv.

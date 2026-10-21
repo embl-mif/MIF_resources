@@ -90,6 +90,12 @@ workflow {
             def endomorph_empty_min_area_value = Utils.normalizeOptionalText(row.endomorph_empty_min_area)
             def endomorph_empty_seed_percentile_value = Utils.normalizeOptionalText(row.endomorph_empty_seed_percentile)
             def endomorph_empty_min_contrast_value = Utils.normalizeOptionalText(row.endomorph_empty_min_contrast)
+            def endomorph_empty_nucleus_factor_value = Utils.normalizeOptionalText(row.endomorph_empty_nucleus_factor)
+            def endomorph_empty_core_min_area_value = Utils.normalizeOptionalText(row.endomorph_empty_core_min_area)
+            def endomorph_empty_cell_percentile_value = Utils.normalizeOptionalText(row.endomorph_empty_cell_percentile)
+            def endomorph_empty_core_threshold_value = Utils.normalizeOptionalText(row.endomorph_empty_core_threshold)
+            def endomorph_empty_edge_threshold_value = Utils.normalizeOptionalText(row.endomorph_empty_edge_threshold)
+            def endomorph_empty_max_floor_ratio_value = Utils.normalizeOptionalText(row.endomorph_empty_max_floor_ratio)
 
             def meta = row + [
                 id                       : dataset_id,
@@ -160,8 +166,9 @@ workflow {
                 // cell that doesn't touch the image border, computes N nested
                 // edge-distance bands R1..RN (inward from the cell edge; N =
                 // number of endomorph_ring_depths) as a label OME-Zarr, and
-                // estimates the cell-free ("empty") area from the fluorescence
-                // of endomorph_empty_channels (labels N+1=empty, N+2=not
+                // estimates the gaps (cell-free "empty" area) from the
+                // fluorescence of endomorph_empty_channels, excluding the host
+                // nuclei of the clean-channel zarr (labels N+1=empty, N+2=not
                 // imaged). Morphology, intensities and the per-image summary
                 // are computed downstream by PYMIF_ENDOMORPH_FEATURES.
                 endomorph_regions_output_name     : resolved_endomorph_regions_output,
@@ -181,12 +188,21 @@ workflow {
                     : (params.resolution_level != null ? params.resolution_level as int : 0),
                 endomorph_labels_resolution_level    : 0,
                 endomorph_measure_channels    : Utils.normalizeOptionalText(row.endomorph_measure_channels),
-                // Channels whose signal means "cells are present" (index or
-                // exact channel name). Blank = all channels; leave out one
-                // that stains only part of the cell (e.g. a nuclei stain).
+                // Cell-body channels of the MIP (index or exact channel name);
+                // a gap must be dark in all of them. Blank = all channels
+                // except the nuclear stain.
                 endomorph_empty_channels          : Utils.normalizeOptionalText(row.endomorph_empty_channels),
-                endomorph_empty_smoothing         : endomorph_empty_smoothing_value ? endomorph_empty_smoothing_value as float : 2.0,
-                endomorph_empty_min_area          : endomorph_empty_min_area_value ? endomorph_empty_min_area_value as float : 25.0,
+                // Nuclear channel of the clean-channel zarr (index or name, e.g.
+                // HOECHST_33342_clean): host nuclei, never gap. Blank = auto.
+                endomorph_empty_nucleus_channel   : Utils.normalizeOptionalText(row.endomorph_empty_nucleus_channel),
+                endomorph_empty_nucleus_factor    : endomorph_empty_nucleus_factor_value ? endomorph_empty_nucleus_factor_value as float : 8.0,
+                endomorph_empty_smoothing         : endomorph_empty_smoothing_value ? endomorph_empty_smoothing_value as float : 0.3,
+                endomorph_empty_min_area          : endomorph_empty_min_area_value ? endomorph_empty_min_area_value as float : 3.0,
+                endomorph_empty_core_min_area     : endomorph_empty_core_min_area_value ? endomorph_empty_core_min_area_value as float : 1.5,
+                endomorph_empty_cell_percentile   : endomorph_empty_cell_percentile_value ? endomorph_empty_cell_percentile_value as float : 10.0,
+                endomorph_empty_core_threshold    : endomorph_empty_core_threshold_value ? endomorph_empty_core_threshold_value as float : 0.2,
+                endomorph_empty_edge_threshold    : endomorph_empty_edge_threshold_value ? endomorph_empty_edge_threshold_value as float : 0.65,
+                endomorph_empty_max_floor_ratio   : endomorph_empty_max_floor_ratio_value ? endomorph_empty_max_floor_ratio_value as float : 0.55,
                 endomorph_empty_seed_percentile   : endomorph_empty_seed_percentile_value ? endomorph_empty_seed_percentile_value as float : 1.0,
                 endomorph_empty_min_contrast      : endomorph_empty_min_contrast_value ? endomorph_empty_min_contrast_value as float : 0.25,
                 endomorph_cells_output_name       : resolved_endomorph_cells_output,
@@ -304,13 +320,8 @@ workflow {
      * a label OME-Zarr. A cell with no painted band pixel was excluded for
      * touching the image border.
      *
-     * With --gap_channels it also quantifies the gaps (cell-free area) into
-     * separate outputs, excluding the host nuclei of the clean-channel zarr;
-     * the regions zarr and empty-area QC are unchanged by it.
-     *
      * Expected output:
-     * tuple(meta, regions_zarr)   (and .qc: tuple(meta, empty_qc_json),
-     * .gaps: tuple(meta, gaps_zarr, gaps_summary_csv, gaps_qc_json) if --gap_channels)
+     * tuple(meta, regions_zarr)   (and .qc: tuple(meta, empty_qc_json))
      */
     ch_regions_inputs = CELLPOSE_FINAL.out.labels
         .map { meta, labels -> tuple(meta.id, meta, labels) }
@@ -351,19 +362,5 @@ workflow {
         PYMIF_ENDOMORPH_FEATURES.out.csv.map { meta, cells, summary -> summary }.collect(),
         merged_dir
     )
-
-    /*
-     * Optional gaps (--gap_channels): the per-dataset outputs are copied to
-     * params.gaps_outdir by PYMIF_ENDOMORPH_REGIONS; merge their summaries.
-     */
-    if (params.gap_channels) {
-        if (!params.gaps_outdir || !new File(params.gaps_outdir.toString()).isAbsolute()) {
-            throw new IllegalArgumentException("--gaps_outdir must be an absolute path when --gap_channels is set")
-        }
-
-        PYMIF_ENDOMORPH_REGIONS.out.gaps
-            .map { meta, zarr, summary, qc -> summary }
-            .collectFile(name: 'gaps_summary_merged.csv', keepHeader: true, skip: 1, storeDir: params.gaps_outdir.toString())
-    }
 
 }
