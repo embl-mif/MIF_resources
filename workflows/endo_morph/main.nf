@@ -188,8 +188,15 @@ workflow {
             endomorph_intensity_resolution_level: endomorphIntensityLevel(m),
             endomorph_labels_resolution_level   : 0,
             endomorph_empty_channels            : Utils.normalizeOptionalText(m.endomorph_empty_channels),
-            endomorph_empty_smoothing           : floatOr(m, 'endomorph_empty_smoothing', 2.0f),
-            endomorph_empty_min_area            : floatOr(m, 'endomorph_empty_min_area', 25.0f),
+            endomorph_empty_nucleus_channel     : Utils.normalizeOptionalText(m.endomorph_empty_nucleus_channel),
+            endomorph_empty_nucleus_factor      : floatOr(m, 'endomorph_empty_nucleus_factor', 8.0f),
+            endomorph_empty_smoothing           : floatOr(m, 'endomorph_empty_smoothing', 0.3f),
+            endomorph_empty_min_area            : floatOr(m, 'endomorph_empty_min_area', 3.0f),
+            endomorph_empty_core_min_area       : floatOr(m, 'endomorph_empty_core_min_area', 1.5f),
+            endomorph_empty_cell_percentile     : floatOr(m, 'endomorph_empty_cell_percentile', 10.0f),
+            endomorph_empty_core_threshold      : floatOr(m, 'endomorph_empty_core_threshold', 0.2f),
+            endomorph_empty_edge_threshold      : floatOr(m, 'endomorph_empty_edge_threshold', 0.65f),
+            endomorph_empty_max_floor_ratio     : floatOr(m, 'endomorph_empty_max_floor_ratio', 0.55f),
             endomorph_empty_seed_percentile     : floatOr(m, 'endomorph_empty_seed_percentile', 1.0f),
             endomorph_empty_min_contrast        : floatOr(m, 'endomorph_empty_min_contrast', 0.25f),
         ]
@@ -263,7 +270,8 @@ workflow {
     ch_regions_inputs = ch_mip
         .map { meta, mip -> tuple(meta.id, regionsMeta(meta), mip) }
         .join(ch_final_labels)
-        .map { id, regions_meta, mip, labels -> tuple(regions_meta, labels, mip) }
+        .join(PYMIF_CLEAN_CHANNEL.out.zarr.map { meta, clean -> tuple(meta.id, clean) })
+        .map { id, regions_meta, mip, labels, clean -> tuple(regions_meta, labels, mip, clean) }
 
     PYMIF_ENDOMORPH_REGIONS(ch_regions_inputs)
 

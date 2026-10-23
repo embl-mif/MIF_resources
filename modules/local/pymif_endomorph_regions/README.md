@@ -8,6 +8,7 @@ Builds one label OME-Zarr with, for every cell not touching the image border, N 
 | `meta` | val | Sample map (`id`, `endomorph_ring_depths`, `endomorph_border_margin`, `endomorph_empty_channels` (default: all channels), `endomorph_empty_*`, resolution levels, output name) |
 | `labels_zarr` | path | Final cell labels |
 | `intensity_zarr` | path | Intensity OME-Zarr (the MIP, not the cleaned image) |
+| `nucleus_zarr` | path | Clean-channel OME-Zarr: its nuclear channel (`meta.endomorph_empty_nucleus_channel`, default the `..._clean` Hoechst/DAPI channel) marks host nuclei, which are never empty |
 
 ## Output
 | Name | Type | Description |

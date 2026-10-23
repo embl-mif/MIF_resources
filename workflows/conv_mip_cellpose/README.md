@@ -2,7 +2,7 @@
 
 Runs each dataset through three stages:
 
-1. Convert to OME-Zarr with `pymif 2zarr`.
+1. Convert to OME-Zarr with `pymif convert`.
 2. Build a multiscale 2D maximum-intensity projection (MIP) over Z.
 3. Segment the MIP with Cellpose-SAM.
 
@@ -27,9 +27,9 @@ One dataset per row. Required column:
 | `resolution_level` | Pyramid level used for segmentation. Defaults to `--resolution_level` (0). |
 | `do_3D` | Any non-empty value enables 3D segmentation; leave blank to disable. |
 
-### Conversion columns (`pymif 2zarr`)
+### Conversion columns (`pymif convert`)
 
-Same set as [conv_cellpose](../conv_cellpose/README.md#conversion-columns-pymif-2zarr):
+Same set as [conv_cellpose](../conv_cellpose/README.md#conversion-columns-pymif-convert):
 `microscope`, `chunk_size`, `max_size(MB)`, `scene_index`, `zarr_format`,
 `downscale_factor`, `channel_colors`, `channel_names`, `num_levels`, `subset`,
 `shards`, `shard_target_mb`, `shard_exclude_axes`. `chunk_size` takes

@@ -1,7 +1,7 @@
 process PYMIF_FEATURE_EXTRACTION {
     tag "${meta.id}"
     label 'process_medium'
-    container 'ghcr.io/grinic/pymif:2026.10.0'
+    container 'ghcr.io/embl-mif/pymif:0.5.0'
 
     input:
     tuple val(meta), path(intensity_zarr), path(labels_zarr)

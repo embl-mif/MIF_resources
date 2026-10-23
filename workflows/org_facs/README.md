@@ -8,7 +8,7 @@ against the converted image, writing one features CSV per dataset.
 
 ## Steps
 
-1. `PYMIF_CONVERSION` – convert the input to OME-Zarr (`pymif 2zarr`). Skipped
+1. `PYMIF_CONVERSION` – convert the input to OME-Zarr (`pymif convert`). Skipped
    if the store already exists.
 2. `TILED_CELLPOSE_SAM_ZARR` (subworkflow) – segment the converted image tile
    by tile and merge the result into one intermediate label mask, kept only in
@@ -46,7 +46,7 @@ path, or blank to use the default.
 | `input` | **yes** | – | Path to the input microscopy dataset. |
 | `dataset_id` | no | `<input basename>_<row number>` | Identifier used in task names and default output names. Keep it unique: it also names the per-tile scratch directory. |
 
-### 1. Conversion (`pymif 2zarr`)
+### 1. Conversion (`pymif convert`)
 
 Convert the input into the OME-Zarr used by every later step. All columns are
 optional; unset ones are not passed to `pymif`, so its own defaults apply. The

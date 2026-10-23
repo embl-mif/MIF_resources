@@ -1,7 +1,7 @@
 process PYMIF_OTSU_LABEL {
     tag "${meta.id}"
     label 'process_high'
-    container 'ghcr.io/grinic/pymif:2026.10.0'
+    container 'ghcr.io/embl-mif/pymif:0.5.0'
 
     input:
     tuple val(meta), path(input_zarr)
