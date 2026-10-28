@@ -1,7 +1,7 @@
 process PYMIF_ENDOMORPH_REGIONS {
     tag "${meta.id}"
     label 'process_medium'
-    container 'ghcr.io/embl-mif/pymif:0.5.0'
+    container 'ghcr.io/embl-mif/pymif:0.5.3'
 
     input:
     // nucleus_zarr: the clean-channel zarr, whose "<channel>_clean" nuclei are never gap.
