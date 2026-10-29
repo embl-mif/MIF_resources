@@ -1,28 +1,47 @@
 # MIF_resources
 
-__[[TOC]]__
+A collection of modules, subworkflows and workflows for working with
+**OME-Zarr** images: converting microscopy data to OME-Zarr, and running
+segmentation, feature extraction, pixel classification and tracking on it at scale.
+They are written in [Nextflow](https://www.nextflow.io/) and run their tools in
+containers.
 
-This repository collects resources for users of the
+The resources were developed for the needs of users of the
 [Mesoscopic Imaging Facility](https://www.embl.org/groups/mesoscopic-imaging-facility/)
-(MIF) at [EMBL Barcelona](https://www.embl.org/sites/barcelona/):
+(MIF) at [EMBL Barcelona](https://www.embl.org/sites/barcelona/), but they are
+general: anyone can use, adapt or reuse the modules and workflows for their own
+OME-Zarr data.
 
-- **Guides** for getting set up on the EMBL Heidelberg HPC cluster and the EMBL GitLab.
-- **Nextflow workflows** for converting microscopy data to OME-Zarr and running
-  segmentation, feature extraction, pixel classification and tracking on it at scale.
+What is in the repository:
+
+- **Nextflow workflows and modules** built around OME-Zarr, see [Workflows](#workflows).
 - **Containers** used by those workflows.
+- **Guides and configuration for EMBL users**, for getting set up on the EMBL
+  Heidelberg HPC cluster and on GitHub.
+
+### Who is this for?
+
+| If you are... | What applies to you |
+| --- | --- |
+| **Anyone** working with OME-Zarr | The modules in [modules/local/](modules/local/), the subworkflows and the workflows in [workflows/](workflows/), and the conventions below. Use them as they are, or take single modules into your own pipelines. You only need to supply your own Nextflow profile for your compute environment (see [Cluster resources](#cluster-resources)). |
+| **An EMBL user** | Additionally, the EMBL Heidelberg HPC setup: [cluster.md](cluster.md), [github.md](github.md), and the `embl_hd` configuration in [conf/](conf/), which already sets SLURM, Apptainer and shared caches. |
+| **A user of the MIF in Barcelona** | Additionally, the shared facility locations used in the examples and templates (`/g/mif-hd/shared/...`) and the facility contact under [Help](#help). |
 
 ## Getting started
 
-New to the cluster? Follow these guides in order:
+For EMBL users: if you are new to the cluster, follow these guides in order:
 
 1. [cluster.md](cluster.md): get SSH access to the EMBL Heidelberg HPC cluster and log in.
-2. [gitlab.md](gitlab.md): set up an SSH key for GitLab on the cluster and clone repositories.
+2. [github.md](github.md): set up an SSH key for GitHub on the cluster and clone repositories.
 
-Then clone this repository on the cluster, for example into your home directory:
+Then clone this repository, for example into your home directory on the cluster:
 
 ```bash
-git clone git@git.embl.org:grp-mif/image-analysis/mif_resources.git ~/projects/mif_resources
+git clone git@github.com:embl-mif/MIF_resources.git ~/projects/mif_resources
 ```
+
+If you are outside EMBL, clone it with HTTPS instead
+(`git clone https://github.com/embl-mif/MIF_resources.git`).
 
 Run `git pull` in that folder before every new analysis so you have the latest
 fixes.
@@ -32,7 +51,10 @@ fixes.
 Every workflow lives in its own folder under [workflows/](workflows/). Most of them
 read an **input CSV with one dataset per row** and process all rows in parallel on
 the cluster. Each folder has a `README.md` listing every CSV column and parameter,
-and a `template_run.sh` for batch submission.
+a `template_run.sh` for batch submission, and a `nextflow.config` with the
+**workflow-specific parameters** (for example the resolution level or the
+Cellpose settings). Check it to see what you can set, and
+override any parameter on the command line (`--<parameter> <value>`).
 
 ### Which workflow do I need?
 
@@ -88,32 +110,19 @@ sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,25,0
 The column names differ between workflows. Check the workflow's README for the
 full list.
 
-### 2. Run interactively (small tests)
+### 2. Submit as a batch job
 
-From a login node, with the repository cloned to `~/projects/mif_resources`:
-
-```bash
-module load Nextflow/25.10.1
-
-nextflow run ~/projects/mif_resources/workflows/conv_cellpose/main.nf \
-    -lib ~/projects/mif_resources/lib \
-    --input_csv /path/to/input.csv \
-    --cellpose_model_path /g/mif-hd/shared/cellpose_models/cpsam \
-    -resume
-```
-
-`-lib` is **required**: it points Nextflow to the shared helpers in
-[lib/Utils.groovy](lib/Utils.groovy), which it doesn't find on its own because
-the workflows are in subfolders.
-
-Nextflow itself stays running for the whole analysis, so for anything longer
-than a quick test, submit it as a batch job instead.
-
-### 3. Submit as a batch job (recommended)
+Nextflow keeps running for the whole analysis, so we recommend submitting it as a
+batch job with the template script we provide. The job keeps running after you log
+out or lose your connection.
 
 Each workflow folder has a `template_run.sh`. Copy it to a run directory, edit
 the lines marked `# <--- MODIFY` (your e-mail, the paths to `main.nf`, `lib/`,
-the work directory and the CSV, and the Cellpose model), then submit:
+the work directory and the CSV, and the Cellpose model). Make sure the script
+loads both `Nextflow` and `Miniforge3` (`module load Miniforge3/24.1.2-0`).
+Miniforge3 is needed because some modules rely on conda environments, which
+Nextflow creates on the fly (without it those tasks fail with
+`conda: command not found`). Then submit:
 
 ```bash
 mkdir -p logs
@@ -124,7 +133,12 @@ The job runs the Nextflow controller on the `htc-el8` partition. Nextflow then
 submits every task as its own SLURM job, so the controller itself needs little
 memory. Logs go to `logs/<job-name>_<job-id>_<user>.out` / `.err`.
 
-### 4. Resume after a failure
+If you prefer, you can run the `nextflow run` command from the script inside `tmux`
+instead. Either way, `-lib` is **required**: it points Nextflow to the shared helpers
+in [lib/Utils.groovy](lib/Utils.groovy), which it doesn't find on its own because
+the workflows are in subfolders. From the repository root `-lib lib` is enough.
+
+### 3. Resume after a failure
 
 Re-submit the same command. With `-resume` (on by default in the templates),
 finished tasks are reused from the work directory and only failed or new tasks
@@ -139,6 +153,13 @@ These apply to all CSV-driven workflows unless their README says otherwise.
 - **Output columns** (`output`, `labels_output`, `features_output`, ...) must be
   **absolute paths**, or blank. A relative path is rejected with an error,
   because it would end up inside the Nextflow work directory.
+- **Outputs are written directly to their final location, not published.** We
+  don't use Nextflow's `publishDir`, which copies results out of the work directory
+  after a task finishes. Instead each task writes straight to the absolute output
+  path, and leaves a symbolic link in its work directory pointing to it. Nextflow
+  follows that link to pass the result to the next step, so large OME-Zarr stores
+  are never copied. The link points from the work directory to the output, not
+  the other way round, so cleaning the work directory does not delete your results.
 - **Blank output columns** use a default location. Depending on the workflow
   that is either under `--default_outdir` / `--outdir` (default `results/` in
   the launch directory) or the task's work directory. The workflow's README
@@ -226,7 +247,9 @@ its CUDA 12.4 image can't compile for the newest GPUs.
 ## Cluster resources
 
 Shared resource settings live in [conf/](conf/) and are included by every
-workflow's `nextflow.config`:
+workflow's `nextflow.config`. `base.config` is generic. `embl_hd.config` is specific
+to the EMBL Heidelberg cluster: if you run elsewhere, copy it and adapt the executor,
+container and cache settings to your environment.
 
 | File | Content |
 | --- | --- |
@@ -245,10 +268,11 @@ while.
 ## Repository layout
 
 ```text
-mif_resources/
+MIF_resources/
 ├── README.md              this file
+├── LICENSE                MIT license
 ├── cluster.md             HPC cluster access
-├── gitlab.md              GitLab SSH key and cloning
+├── github.md              GitHub SSH key and cloning
 ├── workflows/             runnable pipelines: main.nf, nextflow.config, README.md, template_run.sh
 ├── subworkflows/local/    reusable groups of steps (tiled Cellpose-SAM, ilastik, Ultrack)
 ├── modules/local/         single steps (one process each), each with a README describing inputs/outputs
@@ -258,10 +282,16 @@ mif_resources/
 └── containers/            Docker images built for the workflows
 ```
 
-### Building containers
+### Containers
+
+Containers built by this team are published to the GitHub Container Registry
+(`ghcr.io/embl-mif/`). Some modules use containers maintained by other EMBL
+groups (for example `zarr_tools` from the Centre for Bioimage Analysis, pulled from
+`registry.git.embl.org/grp-cba/containers/`). Those are not built from this
+repository. They were created by our collaborators and keep their own licenses.
 
 See [containers/readme.md](containers/readme.md) to build a container and push it
-to the EMBL GitLab registry.
+to the GitHub Container Registry.
 
 ### Adding a workflow
 
@@ -276,5 +306,13 @@ to the EMBL GitLab registry.
 
 ## Help
 
-For questions, contact the
-[Mesoscopic Imaging Facility](https://www.embl.org/groups/mesoscopic-imaging-facility/).
+For questions or bug reports, open an
+[issue](https://github.com/embl-mif/MIF_resources/issues) on GitHub, or contact the current maintainers.
+## Maintainers
+
+This repository is maintained by Nora Vivanco, Data Scientist for Imaging and Omics at the EMBL Data Science Centre, and Nicola Gritti, Bioimaging Project Manager at the Mesoscopic Imaging Facility (MIF), EMBL Barcelona.
+
+If you use any of these resources, please acknowledge the maintainers and their departments.
+## License
+
+Copyright (c) 2026 EMBL. Released under the MIT License, see [LICENSE](LICENSE).
