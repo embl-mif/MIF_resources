@@ -27,10 +27,15 @@ process PYMIF_FILTER {
     def filtersArg = meta.filter_properties ? "--filters ${shellQuote(meta.filter_properties)}" : ""
 
     """
-    if [ -d ${shellQuote(output_labels)} ] && [ -e ${shellQuote(output_labels)}/zarr.json -o -e ${shellQuote(output_labels)}/.zgroup ]; then
+    out=${shellQuote(output_labels)}
+    if [ -d "\$out" ] && { grep -q '"ome"' "\$out/zarr.json" 2>/dev/null || grep -q '"multiscales"' "\$out/.zattrs" 2>/dev/null; }; then
         echo "Output already exists, skipping label filtering: ${output_labels}"
     else
-        mkdir -p \$(dirname ${shellQuote(output_labels)})
+        if [ -e "\$out" ]; then
+            echo "Incomplete output found (no OME metadata), removing: ${output_labels}"
+            rm -rf "\$out"
+        fi
+        mkdir -p "\$(dirname "\$out")"
         mkdir -p \$(dirname ${shellQuote(output_csv)})
 
         filter_pymif_labels.py \

@@ -23,10 +23,15 @@ process PYMIF_MIP {
     // Keep this script indented with spaces only: Nextflow dedents it, and stray tabs
     // leave the END_VERSIONS heredoc terminator indented, so bash never closes it.
     """
-    if [ -d ${shellQuote(output_mip)} ] && [ -e ${shellQuote(output_mip)}/zarr.json -o -e ${shellQuote(output_mip)}/.zgroup ]; then
+    out=${shellQuote(output_mip)}
+    if [ -d "\$out" ] && { grep -q '"ome"' "\$out/zarr.json" 2>/dev/null || grep -q '"multiscales"' "\$out/.zattrs" 2>/dev/null; }; then
         echo "Output already exists, skipping mip: ${output_mip}"
     else
-        mkdir -p \$(dirname ${shellQuote(output_mip)})
+        if [ -e "\$out" ]; then
+            echo "Incomplete output found (no OME metadata), removing: ${output_mip}"
+            rm -rf "\$out"
+        fi
+        mkdir -p "\$(dirname "\$out")"
 
         create_pymif_mip.py \
             --input "${input_zarr}" \

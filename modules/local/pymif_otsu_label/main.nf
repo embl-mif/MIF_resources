@@ -24,10 +24,15 @@ process PYMIF_OTSU_LABEL {
     def otsuMultiplierArg = meta.otsu_multiplier != null ? "--otsu-multiplier ${meta.otsu_multiplier}" : ""
 
     """
-    if [ -d ${shellQuote(output_labels)} ] && [ -e ${shellQuote(output_labels)}/zarr.json -o -e ${shellQuote(output_labels)}/.zgroup ]; then
+    out=${shellQuote(output_labels)}
+    if [ -d "\$out" ] && { grep -q '"ome"' "\$out/zarr.json" 2>/dev/null || grep -q '"multiscales"' "\$out/.zattrs" 2>/dev/null; }; then
         echo "Output already exists, skipping Otsu label: ${output_labels}"
     else
-        mkdir -p \$(dirname ${shellQuote(output_labels)})
+        if [ -e "\$out" ]; then
+            echo "Incomplete output found (no OME metadata), removing: ${output_labels}"
+            rm -rf "\$out"
+        fi
+        mkdir -p "\$(dirname "\$out")"
 
         create_pymif_otsu_label.py \
             --input "${input_zarr}" \

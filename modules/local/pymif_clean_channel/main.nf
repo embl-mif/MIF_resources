@@ -21,10 +21,15 @@ process PYMIF_CLEAN_CHANNEL {
     }
 
     """
-    if [ -d ${shellQuote(output_zarr)} ] && [ -e ${shellQuote(output_zarr)}/zarr.json -o -e ${shellQuote(output_zarr)}/.zgroup ]; then
+    out=${shellQuote(output_zarr)}
+    if [ -d "\$out" ] && { grep -q '"ome"' "\$out/zarr.json" 2>/dev/null || grep -q '"multiscales"' "\$out/.zattrs" 2>/dev/null; }; then
         echo "Output already exists, skipping clean channel: ${output_zarr}"
     else
-        mkdir -p \$(dirname ${shellQuote(output_zarr)})
+        if [ -e "\$out" ]; then
+            echo "Incomplete output found (no OME metadata), removing: ${output_zarr}"
+            rm -rf "\$out"
+        fi
+        mkdir -p "\$(dirname "\$out")"
 
         create_pymif_clean_channel.py \
             --intensity "${intensity_zarr}" \
