@@ -2,7 +2,7 @@ process LABEL_SOLVER {
     tag "$meta.id"
     label "process_low"
 
-    container "docker://registry.git.embl.org/grp-cba/containers/multicut_stitching:0.8.0"
+    container "ghcr.io/embl-mif/multicut_stitching:0.8.0"
 
     input:
     tuple val(meta), path(local_graphs)

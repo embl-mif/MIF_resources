@@ -2,7 +2,7 @@ process TILE_CONSTRUCTOR {
     tag "$meta.id"
     label 'process_low'
 
-    container "docker://registry.git.embl.org/grp-cba/containers/zarr_tools:0.34.0"
+    container "ghcr.io/embl-mif/zarr_tools:0.34.0"
 
     input:
     tuple val(meta), path(local_image), val(image_uri)

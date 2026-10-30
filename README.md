@@ -284,14 +284,15 @@ MIF_resources/
 
 ### Containers
 
-Containers built by this team are published to the GitHub Container Registry
-(`ghcr.io/embl-mif/`). Some modules use containers maintained by other EMBL
-groups (for example `zarr_tools` from the Centre for Bioimage Analysis, pulled from
-`registry.git.embl.org/grp-cba/containers/`). Those are not built from this
-repository. They were created by our collaborators and keep their own licenses.
+Containers are published to the GitHub Container Registry (`ghcr.io/embl-mif/`).
+The recipes in [containers/](containers/) (`zarr_tools`, `cellpose_zarr`,
+`multicut_stitching`, `pymif_cpsam`) are built automatically by a GitHub Action.
+The `zarr_tools`, `cellpose_zarr` and `multicut_stitching` recipes are adapted from
+those of the [EMBL Centre for Bioimage Analysis](https://git.embl.org/grp-cba/containers).
+The `pymif` image is built in the [pymif repository](https://github.com/embl-mif/pymif).
+The ilastik and Ultrack modules use public images from Docker Hub.
 
-See [containers/readme.md](containers/readme.md) to build a container and push it
-to the GitHub Container Registry.
+See [containers/readme.md](containers/readme.md) to add or update a container.
 
 ### Adding a workflow
 
@@ -308,6 +309,7 @@ to the GitHub Container Registry.
 
 For questions or bug reports, open an
 [issue](https://github.com/embl-mif/MIF_resources/issues) on GitHub, or contact the current maintainers.
+
 ## Maintainers
 
 This repository is maintained by Nora Vivanco, Data Scientist for Imaging and Omics at the EMBL Data Science Centre, and Nicola Gritti, Bioimaging Project Manager at the Mesoscopic Imaging Facility (MIF), EMBL Barcelona.
