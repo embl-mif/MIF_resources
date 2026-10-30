@@ -2,7 +2,7 @@ process LOCAL_LABEL_MATCHER {
     tag "$meta.id"
     label "process_low"
 
-    container "docker://registry.git.embl.org/grp-cba/containers/multicut_stitching:0.8.0"
+    container "ghcr.io/embl-mif/multicut_stitching:0.8.0"
 
     input:
     tuple val(meta), path(self_zarr), path(right_zarr, stageAs: 'right_input'), path(bottom_zarr, stageAs: 'bottom_input'), path(behind_zarr, stageAs: 'behind_input')
