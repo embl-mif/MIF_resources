@@ -1,7 +1,7 @@
-process PYMIF_FILTER {
+process ZARRSMITH_FILTER {
     tag "${meta.id}"
     label 'process_high'
-    container 'ghcr.io/embl-mif/pymif:0.5.3'
+    container 'ghcr.io/embl-mif/zarrsmith:0.6.1'
 
     input:
     tuple val(meta), path(labels_zarr), path(csv_file)
@@ -38,7 +38,7 @@ process PYMIF_FILTER {
         mkdir -p "\$(dirname "\$out")"
         mkdir -p \$(dirname ${shellQuote(output_csv)})
 
-        filter_pymif_labels.py \
+        filter_zarrsmith_labels.py \
             --labels "${labels_zarr}" \
             --csv "${csv_file}" \
             --output "${output_labels}" \
@@ -63,7 +63,7 @@ process PYMIF_FILTER {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        pymif: \$(python -c 'from importlib.metadata import version; print(version("pymif"))' 2>/dev/null || echo "unknown")
+        zarrsmith: \$(python -c 'from importlib.metadata import version; print(version("zarrsmith"))' 2>/dev/null || echo "unknown")
     END_VERSIONS
     """
 }

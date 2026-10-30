@@ -1,16 +1,16 @@
-name: "pymif_conversion"
-description: "Convert microscope datasets listed in a PyMIF batch CSV into OME-Zarr stores."
+name: "zarrsmith_conversion"
+description: "Convert microscope datasets listed in a ZarrSmith batch CSV into OME-Zarr stores."
 keywords:
   - zarr
   - microscopy
-  - pymif
+  - zarrsmith
   - conversion
 tools:
-  - name: "pymif"
+  - name: "zarrsmith"
     description: "Python library for converting MIF microscope file formats into OME-Zarr."
-    homepage: "https://github.com/grinic/pymif"
-    documentation: "https://grinic.github.io/pymif/"
-    tool_dev_url: "https://github.com/grinic/pymif"
+    homepage: "https://github.com/embl-mif/zarrsmith"
+    documentation: "https://embl-mif.github.io/zarrsmith/"
+    tool_dev_url: "https://github.com/embl-mif/zarrsmith"
     licence: ["MIT"]
 input:
   - meta:
@@ -20,7 +20,7 @@ input:
         e.g. [ id:'sample1' ]
   - row:
       type: map
-      description: "One parsed row from the PyMIF input CSV."
+      description: "One parsed row from the ZarrSmith input CSV."
   - input_dataset:
       type: file
       description: "Input microscopy dataset referenced by row.input."

@@ -1,4 +1,4 @@
-# PYMIF_OTSU_LABEL
+# ZARRSMITH_OTSU_LABEL
 
 Otsu-thresholds one channel at a chosen resolution level, labels the mask, and rebuilds the full pyramid by nearest-neighbour resizing, so label ids are consistent across levels. Writes a label OME-Zarr.
 

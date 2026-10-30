@@ -1,7 +1,7 @@
-process PYMIF_OTSU_LABEL {
+process ZARRSMITH_OTSU_LABEL {
     tag "${meta.id}"
     label 'process_high'
-    container 'ghcr.io/embl-mif/pymif:0.5.3'
+    container 'ghcr.io/embl-mif/zarrsmith:0.6.1'
 
     input:
     tuple val(meta), path(input_zarr)
@@ -34,7 +34,7 @@ process PYMIF_OTSU_LABEL {
         fi
         mkdir -p "\$(dirname "\$out")"
 
-        create_pymif_otsu_label.py \
+        create_zarrsmith_otsu_label.py \
             --input "${input_zarr}" \
             --output "${output_labels}" \
             --channel ${meta.otsu_channel} \
@@ -51,7 +51,7 @@ process PYMIF_OTSU_LABEL {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        pymif: \$(python -c 'from importlib.metadata import version; print(version("pymif"))' 2>/dev/null || echo "unknown")
+        zarrsmith: \$(python -c 'from importlib.metadata import version; print(version("zarrsmith"))' 2>/dev/null || echo "unknown")
     END_VERSIONS
     """
 }

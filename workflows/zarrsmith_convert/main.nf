@@ -2,7 +2,7 @@
 
 nextflow.enable.dsl=2
 
-include { PYMIF_CONVERSION } from '../../modules/local/pymif_conversion/main'
+include { ZARRSMITH_CONVERSION } from '../../modules/local/zarrsmith_conversion/main'
 
 
 workflow {
@@ -11,7 +11,7 @@ workflow {
 
     def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
-    pymif_inputs_ch = input_csv_ch
+    zarrsmith_inputs_ch = input_csv_ch
         .splitCsv(header: true)
         .map { row ->
             def index = row_index.getAndIncrement()
@@ -30,5 +30,5 @@ workflow {
             tuple(meta, input_dataset)
         }
 
-    PYMIF_CONVERSION(pymif_inputs_ch)
+    ZARRSMITH_CONVERSION(zarrsmith_inputs_ch)
 }

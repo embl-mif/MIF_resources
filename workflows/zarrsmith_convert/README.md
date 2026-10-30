@@ -1,6 +1,6 @@
-# pymif2zarr
+# zarrsmith_convert
 
-Converts microscopy datasets to OME-Zarr using one `pymif convert` task per row
+Converts microscopy datasets to OME-Zarr using one `zarrsmith convert` task per row
 of an input CSV.
 
 ## Input CSV
@@ -14,9 +14,9 @@ to write it there, or leave it blank to keep `<dataset_id>.ome.zarr` in the
 Nextflow work directory of the task (a relative path is rejected). Set an
 absolute path for anything you want to keep.
 
-The other columns are optional and map to `pymif convert` arguments:
+The other columns are optional and map to `zarrsmith convert` arguments:
 
-| CSV column | PyMIF argument |
+| CSV column | ZarrSmith argument |
 | --- | --- |
 | `dataset_id` | used as `<dataset_id>` in the default `output` path |
 | `microscope` | `--microscope` |
@@ -60,8 +60,8 @@ sample_02,/data/experiment/sample_02.ome.tiff,opera,,,0,3,1 2 2,"DAPI,GFP",
 ```bash
 module load Nextflow/25.10.1
 
-nextflow run /path/to/mif-resources/workflows/pymif2zarr/main.nf \
-    -lib /path/to/mif-resources/lib \
+nextflow run /path/to/nf-modules/workflows/zarrsmith_convert/main.nf \
+    -lib /path/to/nf-modules/lib \
     --input_csv /path/to/input.csv \
     -resume
 ```

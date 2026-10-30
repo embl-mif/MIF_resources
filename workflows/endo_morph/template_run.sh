@@ -18,8 +18,8 @@ module load Nextflow/25.10.1
 cd "/scratch/$USER/endo_morph" # <---------- MODIFY IF NEEDED
 
 # Exporting these variables makes them visible to Nextflow subprocesses.
-export NF_PATH="/home/$USER/projects/mif_resources/workflows/endo_morph/main.nf" # <--- MODIFY
-export LIB_PATH="/home/$USER/projects/mif_resources/lib" # <--- MODIFY
+export NF_PATH="/home/$USER/projects/nf-modules/workflows/endo_morph/main.nf" # <--- MODIFY
+export LIB_PATH="/home/$USER/projects/nf-modules/lib" # <--- MODIFY
 export WDIR="/PATH/TO/WORK/DIRECTORY" # <---------------- MODIFY TO YOUR DESIRED WORK LOCATION
 export CSV_PATH="/PATH/TO/batch.csv" # <----------------- MODIFY
 # Gaps (empty area) are set per row in the CSV, e.g. endomorph_empty_channels="Alexa_488 Alexa_647"

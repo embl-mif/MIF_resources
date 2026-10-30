@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Load a PyMIF label OME-Zarr (e.g. the final Cellpose labels) and its intensity
+Load a ZarrSmith label OME-Zarr (e.g. the final Cellpose labels) and its intensity
 OME-Zarr (e.g. the MIP) and write ONE label OME-Zarr describing where things are.
 With N ring depths (any N >= 1):
 
@@ -39,13 +39,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-import pymif.microscope_manager as mm
+import zarrsmith.microscope_manager as mm
 from scipy import ndimage as ndi
 from skimage.measure import regionprops
 
 NOT_IMAGED_MIN_AREA_UM2 = 25.0  # all-zero regions at least this large count as not imaged
 
-# NGFF requires UCUM-style unit names; pymif reports e.g. "µm".
+# NGFF requires UCUM-style unit names; zarrsmith reports e.g. "µm".
 NGFF_UNITS = {
     "µm": "micrometer", "μm": "micrometer", "um": "micrometer", "micron": "micrometer",
     "nm": "nanometer", "mm": "millimeter",

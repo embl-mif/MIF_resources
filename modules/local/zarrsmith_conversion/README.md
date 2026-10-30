@@ -1,6 +1,6 @@
-# PYMIF_CONVERSION
+# ZARRSMITH_CONVERSION
 
-Converts a microscope dataset to OME-Zarr with `pymif convert`. Options (microscope, chunk size, zarr format, subset, channel names/colors, ...) come from the columns of the input CSV row, carried in `meta`.
+Converts a microscope dataset to OME-Zarr with `zarrsmith convert`. Options (microscope, chunk size, zarr format, subset, channel names/colors, ...) come from the columns of the input CSV row, carried in `meta`.
 
 ## Input
 | Name | Type | Description |

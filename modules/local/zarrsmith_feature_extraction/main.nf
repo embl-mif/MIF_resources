@@ -1,7 +1,7 @@
-process PYMIF_FEATURE_EXTRACTION {
+process ZARRSMITH_FEATURE_EXTRACTION {
     tag "${meta.id}"
     label 'process_medium'
-    container 'ghcr.io/embl-mif/pymif:0.5.3'
+    container 'ghcr.io/embl-mif/zarrsmith:0.6.1'
 
     input:
     tuple val(meta), path(intensity_zarr), path(labels_zarr)
@@ -32,7 +32,7 @@ process PYMIF_FEATURE_EXTRACTION {
     else
         mkdir -p \$(dirname ${shellQuote(output_csv)})
 
-        extract_pymif_features.py \
+        extract_zarrsmith_features.py \
             --intensity "${intensity_zarr}" \
             --labels "${labels_zarr}" \
             --output "${output_csv}" \
@@ -53,7 +53,7 @@ process PYMIF_FEATURE_EXTRACTION {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        pymif: \$(python -c 'from importlib.metadata import version; print(version("pymif"))' 2>/dev/null || echo "unknown")
+        zarrsmith: \$(python -c 'from importlib.metadata import version; print(version("zarrsmith"))' 2>/dev/null || echo "unknown")
     END_VERSIONS
     """
 }

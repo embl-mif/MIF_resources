@@ -1,4 +1,4 @@
-# PYMIF_ENDOMORPH_MERGE
+# ZARRSMITH_ENDOMORPH_MERGE
 
 Merges the per-dataset endo_morph CSVs into one per-cell CSV and one per-image summary CSV (header of the first file kept), and copies them to `merged_dir`.
 

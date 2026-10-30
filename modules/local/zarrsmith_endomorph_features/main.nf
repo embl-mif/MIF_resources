@@ -1,7 +1,7 @@
-process PYMIF_ENDOMORPH_FEATURES {
+process ZARRSMITH_ENDOMORPH_FEATURES {
     tag "${meta.id}"
     label 'process_medium'
-    container 'ghcr.io/embl-mif/pymif:0.5.3'
+    container 'ghcr.io/embl-mif/zarrsmith:0.6.1'
 
     input:
     tuple val(meta), path(intensity_zarr), path(labels_zarr), path(regions_zarr)
@@ -64,7 +64,7 @@ process PYMIF_ENDOMORPH_FEATURES {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        pymif: \$(python -c 'from importlib.metadata import version; print(version("pymif"))' 2>/dev/null || echo "unknown")
+        zarrsmith: \$(python -c 'from importlib.metadata import version; print(version("zarrsmith"))' 2>/dev/null || echo "unknown")
     END_VERSIONS
     """
 }

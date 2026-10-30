@@ -1,4 +1,4 @@
-process PYMIF_ENDOMORPH_MERGE {
+process ZARRSMITH_ENDOMORPH_MERGE {
     label 'process_low'
 
     publishDir { merged_dir }, mode: 'copy'

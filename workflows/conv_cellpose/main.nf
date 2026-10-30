@@ -2,7 +2,7 @@
 
 nextflow.enable.dsl = 2
 
-include { PYMIF_CONVERSION      } from '../../modules/local/pymif_conversion/main'
+include { ZARRSMITH_CONVERSION  } from '../../modules/local/zarrsmith_conversion/main'
 include { CELLPOSE_SAM_ZARR_MIF } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
 
@@ -29,7 +29,7 @@ workflow {
     // Stage 1: conversion. Resolves both output paths up front so a bad or missing
     // path fails before any task runs. The row keeps its raw columns; each later
     // stage parses only the ones it consumes.
-    pymif_inputs_ch = Channel
+    zarrsmith_inputs_ch = Channel
         .fromPath(params.input_csv, checkIfExists: true)
         .splitCsv(header: true)
         .map { row ->
@@ -56,11 +56,11 @@ workflow {
             tuple(meta, input_dataset)
         }
 
-    PYMIF_CONVERSION(pymif_inputs_ch)
+    ZARRSMITH_CONVERSION(zarrsmith_inputs_ch)
 
     // Stage 2: Cellpose. Own meta with only the keys the module reads, and its own
     // zarr_output so it never writes over the converted image.
-    ch_cellpose_inputs = PYMIF_CONVERSION.out.zarr
+    ch_cellpose_inputs = ZARRSMITH_CONVERSION.out.zarr
         .map { meta, zarr_path ->
             def (local_image, image_uri) = Utils.splitImageInput(
                 zarr_path,

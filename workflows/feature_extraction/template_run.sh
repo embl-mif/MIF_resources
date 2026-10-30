@@ -18,8 +18,8 @@ module load Nextflow/25.10.1
 cd "/scratch/$USER/feature_extraction" # <---------------- MODIFY IF NEEDED
 
 # Exporting these variables makes them visible to Nextflow subprocesses.
-export NF_PATH="/home/$USER/projects/mif_resources/workflows/feature_extraction/main.nf" # <--- MODIFY
-export LIB_PATH="/home/$USER/projects/mif_resources/lib" # <--- MODIFY
+export NF_PATH="/home/$USER/projects/nf-modules/workflows/feature_extraction/main.nf" # <--- MODIFY
+export LIB_PATH="/home/$USER/projects/nf-modules/lib" # <--- MODIFY
 export WDIR="/PATH/TO/WORK/DIRECTORY" # <---------------- MODIFY TO YOUR DESIRED WORK LOCATION
 export CSV_PATH="/PATH/TO/batch.csv" # <----------------- MODIFY
 

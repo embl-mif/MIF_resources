@@ -1,4 +1,4 @@
-# PYMIF_MIP
+# ZARRSMITH_MIP
 
 Creates a multiscale OME-Zarr holding the maximum-intensity projection over Z of the input, at every resolution level.
 

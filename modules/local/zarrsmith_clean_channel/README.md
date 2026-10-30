@@ -1,4 +1,4 @@
-# PYMIF_CLEAN_CHANNEL
+# ZARRSMITH_CLEAN_CHANNEL
 
 Zeroes one channel of an intensity OME-Zarr outside the labelled objects and appends the result as a new "clean" channel, in a new OME-Zarr holding all original channels plus this one. Keeps the full pyramid (intensity and labels must share it).
 

@@ -4,12 +4,12 @@ import argparse
 import copy
 from pathlib import Path
 
-import pymif.microscope_manager as mm
+import zarrsmith.microscope_manager as mm
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Create a Z maximum-intensity projection using PyMIF."
+        description="Create a Z maximum-intensity projection using ZarrSmith."
     )
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
@@ -44,7 +44,7 @@ def main():
     if args.output.exists():
         raise FileExistsError(f"Output already exists: {args.output}")
 
-    # PyMIF reads all pyramid levels as lazy Dask arrays.
+    # ZarrSmith reads all pyramid levels as lazy Dask arrays.
     source = mm.ZarrManager(str(args.input))
 
     metadata = copy.deepcopy(source.metadata)
@@ -66,7 +66,7 @@ def main():
     output_axes = axes[:z_index] + axes[z_index + 1 :]
     metadata["axes"] = output_axes
 
-    # PyMIF stores scales/units only for spatial axes, rather than all axes.
+    # ZarrSmith stores scales/units only for spatial axes, rather than all axes.
     spatial_axes = [axis for axis in axes if axis in "zyx"]
     z_spatial_index = spatial_axes.index("z")
 
@@ -106,7 +106,7 @@ def main():
     metadata["data_type"] = "intensity"
 
     # ArrayManager validates the projected arrays against the new axis-aware
-    # metadata. PyMIF then writes all OME-NGFF/Zarr metadata.
+    # metadata. ZarrSmith then writes all OME-NGFF/Zarr metadata.
     output = mm.ArrayManager(mip_levels, metadata)
 
     output.to_zarr(

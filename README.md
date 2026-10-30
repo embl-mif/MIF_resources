@@ -1,4 +1,4 @@
-# MIF_resources
+# nf-modules
 
 A collection of modules, subworkflows and workflows for working with
 **OME-Zarr** images: converting microscopy data to OME-Zarr, and running
@@ -37,11 +37,11 @@ For EMBL users: if you are new to the cluster, follow these guides in order:
 Then clone this repository, for example into your home directory on the cluster:
 
 ```bash
-git clone git@github.com:embl-mif/MIF_resources.git ~/projects/mif_resources
+git clone git@github.com:embl-mif/nf-modules.git ~/projects/nf-modules
 ```
 
 If you are outside EMBL, clone it with HTTPS instead
-(`git clone https://github.com/embl-mif/MIF_resources.git`).
+(`git clone https://github.com/embl-mif/nf-modules.git`).
 
 Run `git pull` in that folder before every new analysis so you have the latest
 fixes.
@@ -60,9 +60,9 @@ override any parameter on the command line (`--<parameter> <value>`).
 
 | I want to... | Workflow |
 | --- | --- |
-| Convert raw microscopy files to OME-Zarr only | [pymif2zarr](workflows/pymif2zarr/README.md) |
+| Convert raw microscopy files to OME-Zarr only | [zarrsmith_convert](workflows/zarrsmith_convert/README.md) |
 | Convert and segment whole images with Cellpose-SAM | [conv_cellpose](workflows/conv_cellpose/README.md) |
-| Convert and segment images too large for one GPU, tile by tile, and merge labels across tiles | [conv_tiled_cellpose](workflows/conv_tiled_cellpose/README.md) |
+| Convert and segment images too large for one GPU, tile by tile, and merge labels across tiles | [tiled_cellpose_sam_zarr](subworkflows/local/tiled_cellpose_sam_zarr/main.nf) |
 | Convert, make a 2D maximum-intensity projection (MIP) and segment the MIP | [conv_mip_cellpose](workflows/conv_mip_cellpose/README.md) |
 | Segment a MIP in two passes: seed segmentation, filter objects by size/shape, then a final segmentation guided by the filtered seeds | [conv_mip_cpsam_filt_mask_cpsam](workflows/conv_mip_cpsam_filt_mask_cpsam/README.md) |
 | Do the above and also measure endothelial cell morphology, edge-band intensities and cell-free area | [endo_morph](workflows/endo_morph/README.md) |
@@ -76,9 +76,8 @@ override any parameter on the command line (`--<parameter> <value>`).
 
 | Workflow | Steps | Main outputs | GPU |
 | --- | --- | --- | --- |
-| `pymif2zarr` | convert | OME-Zarr | no |
+| `zarrsmith_convert` | convert | OME-Zarr | no |
 | `conv_cellpose` | convert → Cellpose-SAM | OME-Zarr, labels | yes |
-| `conv_tiled_cellpose` | convert → tile → Cellpose-SAM per tile → match/merge labels | OME-Zarr, merged labels | yes |
 | `conv_mip_cellpose` | convert → MIP → Cellpose-SAM | OME-Zarr, MIP, labels | yes |
 | `conv_mip_cpsam_filt_mask_cpsam` | convert → MIP → seed Cellpose-SAM → measure → filter → clean channel → final Cellpose-SAM | OME-Zarr, MIP, seed and final labels, measurement CSVs | yes (2 runs) |
 | `endo_morph` | as above → edge bands and empty area → morphology and band intensities → merge | as above, plus per-cell and per-image CSVs | yes (2 runs) |
@@ -88,8 +87,8 @@ override any parameter on the command line (`--<parameter> <value>`).
 | `ilastik_tile` | tile → ilastik pixel classification | probability OME-Zarr | no |
 | `ultrack` | Ultrack tracking from probabilities | tracked labels, tracks table, lineage graph | yes |
 
-The conversion step uses [PyMIF](https://github.com/grinic/pymif) (`pymif 2zarr`)
-and supports the microscopes PyMIF knows about (e.g. `luxendo`, `opera`,
+The conversion step uses [ZarrSmith](https://github.com/embl-mif/zarrsmith) (`zarrsmith convert`)
+and supports the microscopes ZarrSmith knows about (e.g. `luxendo`, `opera`,
 `viventis`, `zeiss`, `scape`, and existing `zarr` stores). It is skipped when
 the target OME-Zarr already exists.
 
@@ -185,11 +184,7 @@ the templates), or the path to your own fine-tuned model.
 
 ### Tiled workflows
 
-`conv_tiled_cellpose` and `org_facs` keep per-tile segmentations in
-`/scratch/$USER/cellpose_tiles_published/<dataset_id>/` so tiles that already
-finished are skipped on a re-run. Don't run the same `dataset_id` in two runs at
-the same time, as they would share that directory. See each workflow's README for
-when the directory is cleaned up.
+`org_facs` keeps per-tile segmentations in nextflow `workdir` so tiles that already finished are skipped on a re-run.
 
 ## Workflows without a README
 
@@ -268,7 +263,7 @@ while.
 ## Repository layout
 
 ```text
-MIF_resources/
+nf-modules/
 ├── README.md              this file
 ├── LICENSE                MIT license
 ├── cluster.md             HPC cluster access
@@ -289,7 +284,7 @@ The recipes in [containers/](containers/) (`zarr_tools`, `cellpose_zarr`,
 `multicut_stitching`, `pymif_cpsam`) are built automatically by a GitHub Action.
 The `zarr_tools`, `cellpose_zarr` and `multicut_stitching` recipes are adapted from
 those of the [EMBL Centre for Bioimage Analysis](https://git.embl.org/grp-cba/containers).
-The `pymif` image is built in the [pymif repository](https://github.com/embl-mif/pymif).
+The `zarrsmith` image is built in the [zarrsmith repository](https://github.com/embl-mif/zarrsmith).
 The ilastik and Ultrack modules use public images from Docker Hub.
 
 See [containers/readme.md](containers/readme.md) to add or update a container.
@@ -308,7 +303,7 @@ See [containers/readme.md](containers/readme.md) to add or update a container.
 ## Help
 
 For questions or bug reports, open an
-[issue](https://github.com/embl-mif/MIF_resources/issues) on GitHub, or contact the current maintainers.
+[issue](https://github.com/embl-mif/nf-modules/issues) on GitHub, or contact the current maintainers.
 
 ## Maintainers
 

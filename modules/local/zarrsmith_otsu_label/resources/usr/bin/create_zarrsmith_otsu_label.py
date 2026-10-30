@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Otsu-threshold one channel of a PyMIF OME-Zarr at a chosen resolution level
+Otsu-threshold one channel of a ZarrSmith OME-Zarr at a chosen resolution level
 and label the thresholded mask with skimage.measure.label, then rebuild the
 full multiscale pyramid (same number of levels, chunksize and effective
 downsample factors as the input) by nearest-neighbor resizing that canonical
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import dask.array as da
 import numpy as np
-import pymif.microscope_manager as mm
+import zarrsmith.microscope_manager as mm
 from skimage.filters import threshold_otsu
 from skimage.measure import label
 from skimage.transform import resize
@@ -25,7 +25,7 @@ from skimage.transform import resize
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Otsu-threshold + label one channel of a PyMIF OME-Zarr."
+        description="Otsu-threshold + label one channel of a ZarrSmith OME-Zarr."
     )
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)

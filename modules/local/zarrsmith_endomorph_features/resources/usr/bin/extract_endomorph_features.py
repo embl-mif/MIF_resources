@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pymif.microscope_manager as mm
+import zarrsmith.microscope_manager as mm
 from skimage.measure import regionprops
 
 

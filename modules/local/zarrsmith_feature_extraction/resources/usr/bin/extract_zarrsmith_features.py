@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Load an intensity OME-Zarr and a label OME-Zarr with PyMIF, measure every
+Load an intensity OME-Zarr and a label OME-Zarr with ZarrSmith, measure every
 label with skimage.measure.regionprops (a base property set, plus any
 user-requested structural and/or per-channel intensity properties), and
 write the resulting feature table as a single CSV.
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pymif.microscope_manager as mm
+import zarrsmith.microscope_manager as mm
 from skimage.measure import regionprops_table
 
 # Shape/geometry properties always measured (when supported for the label
@@ -151,7 +151,7 @@ def extract_frame(level_data, indices: dict[int, int | None]) -> np.ndarray:
 def match_shape(array: np.ndarray, target_shape: tuple[int, ...]) -> np.ndarray:
     """Crop/zero-pad `array` at the high end of each axis to `target_shape`.
 
-    Independently-built multiscale pyramids (e.g. PyMIF's own converter vs.
+    Independently-built multiscale pyramids (e.g. ZarrSmith's own converter vs.
     ngff-zarr's to_multiscales, used by Cellpose) can round a coarse level's
     dimensions a pixel or two differently even from the same base image.
     Mirrors _match_mask_shape in cellpose_sam_zarr.py.

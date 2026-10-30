@@ -1,4 +1,4 @@
-# PYMIF_FEATURE_EXTRACTION
+# ZARRSMITH_FEATURE_EXTRACTION
 
 Measures every label of a label OME-Zarr against an intensity OME-Zarr with `skimage.measure.regionprops` (shape properties plus per-channel intensities) and writes one CSV row per label.
 

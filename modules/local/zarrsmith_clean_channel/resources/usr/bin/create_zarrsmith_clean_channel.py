@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
 """
-Mask one channel of a PyMIF intensity OME-Zarr with an existing (already
-filtered/relabeled) PyMIF label OME-Zarr -- zeroing every pixel outside a
+Mask one channel of a ZarrSmith intensity OME-Zarr with an existing (already
+filtered/relabeled) ZarrSmith label OME-Zarr -- zeroing every pixel outside a
 labeled object -- and append the result as a new "clean" channel of a new
 OME-Zarr holding every original channel plus this one. The intensity and
 label stores must share the same multiscale pyramid (same number of levels
-and matching shapes level-for-level, as produced by pymif_otsu_label +
-pymif_filter); every level is masked and written out, so the output keeps
+and matching shapes level-for-level, as produced by zarrsmith_otsu_label +
+zarrsmith_filter); every level is masked and written out, so the output keeps
 the same pyramid structure as the input intensity zarr.
 """
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import dask.array as da
 import numpy as np
-import pymif.microscope_manager as mm
+import zarrsmith.microscope_manager as mm
 
 
 def parse_args():
@@ -45,7 +45,7 @@ def extract_frame(level_data, indices: dict[int, int | None]) -> np.ndarray:
 def match_shape(array: np.ndarray, target_shape: tuple[int, ...]) -> np.ndarray:
     """Crop/zero-pad `array` at the high end of each axis to `target_shape`.
 
-    Independently-built multiscale pyramids (e.g. PyMIF's own converter vs.
+    Independently-built multiscale pyramids (e.g. ZarrSmith's own converter vs.
     ngff-zarr's to_multiscales, used by Cellpose) can round a coarse level's
     dimensions a pixel or two differently even from the same base image.
     Mirrors _match_mask_shape in cellpose_sam_zarr.py.
@@ -145,8 +145,8 @@ def main():
         raise ValueError(
             f"--intensity has {len(intensity_source.data)} pyramid level(s) but "
             f"--labels has {len(labels_source.data)}. They must share the same "
-            "multiscale pyramid (e.g. --labels produced by pymif_otsu_label + "
-            "pymif_filter from this same --intensity zarr)."
+            "multiscale pyramid (e.g. --labels produced by zarrsmith_otsu_label + "
+            "zarrsmith_filter from this same --intensity zarr)."
         )
 
     t_index_int = axes.index("t") if "t" in axes else None

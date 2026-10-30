@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 """
-Filter an existing PyMIF/OME-Zarr label store against a precomputed
-per-label measurements CSV (e.g. from extract_pymif_features.py): keep only
+Filter an existing ZarrSmith/OME-Zarr label store against a precomputed
+per-label measurements CSV (e.g. from extract_zarrsmith_features.py): keep only
 the labels whose row satisfies the requested area and/or other property
 limits, zero every other label out of every pyramid level, relabel the kept
 objects to a contiguous 1..N id space (consistently across every pyramid
@@ -18,7 +18,7 @@ from pathlib import Path
 import dask.array as da
 import numpy as np
 import pandas as pd
-import pymif.microscope_manager as mm
+import zarrsmith.microscope_manager as mm
 
 
 def parse_args():

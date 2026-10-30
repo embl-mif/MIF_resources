@@ -195,7 +195,7 @@ fluorescence disagree.
 | Gaps look too small / too large | Raise / lower `endomorph_empty_edge_threshold` (the area changes by < 10 % between 0.5 and 0.8) |
 
 Check `<id>_endomorph_empty_qc.json` (in the work directory of
-`PYMIF_ENDOMORPH_REGIONS`) before trusting the numbers: `empty_channel_levels`
+`ZARRSMITH_ENDOMORPH_REGIONS`) before trusting the numbers: `empty_channel_levels`
 gives the background and cell level of every channel and which ones were used.
 
 ## Input CSV
@@ -218,7 +218,7 @@ to that location, or blank, which leaves the file in the work directory of the
 process that made it (a relative path is rejected). Set absolute paths for the
 outputs you want to keep.
 
-### Region-bands columns (stage 8, `PYMIF_ENDOMORPH_REGIONS`)
+### Region-bands columns (stage 8, `ZARRSMITH_ENDOMORPH_REGIONS`)
 
 | CSV column | Purpose |
 | --- | --- |
@@ -232,11 +232,11 @@ R1..RN (each pixel holds the narrowest band containing it), `N+1` = empty
 area, `N+2` = not imaged, `0` = none of these (including cells excluded for
 touching the border). Empty and not-imaged pixels overwrite the bands, so a
 cell pixel that is empty is not counted in that cell's bands.
-`PYMIF_ENDOMORPH_FEATURES` reads everything it needs, including the empty
+`ZARRSMITH_ENDOMORPH_FEATURES` reads everything it needs, including the empty
 area, from this zarr, and treats a cell as measured if it has any band pixel;
 a cell with none was excluded here for touching the border.
 
-### Channel and empty-area columns (stage 8, `PYMIF_ENDOMORPH_REGIONS`; the measured channels are stage 9)
+### Channel and empty-area columns (stage 8, `ZARRSMITH_ENDOMORPH_REGIONS`; the measured channels are stage 9)
 
 Channels are given as the exact `channel_names` entry of the MIP (e.g. `Alexa_488`, no spaces or commas in the name) or its index (e.g. `0`), separated by whitespace, `,` or `;`. Nothing in the workflow assumes what a channel stains.
 
@@ -292,7 +292,7 @@ For each dataset (`<id>` = `dataset_id`), at the path given in the matching
 | `<id>_endomorph_cells.csv` | One row per measured cell: `dataset_id`, `label`, centroid, area, perimeter, axis lengths, `aspect_ratio`, `orientation_deg`, `R<k>_area_px` for every band, and the mean of every measured channel in every band and in the whole cell: `R<k>_<channel>_mean` and `cell_<channel>_mean` (`<channel>` = the channel name, spaces replaced by `_`) |
 | `<id>_endomorph_summary.csv` | One row for the image: `dataset_id`, `n_cells` (all labelled cells, including those touching the border), `n_cells_analysed` (rows of the cells CSV), `image_area`, `imaged_area`, the area statistics computed from the regions zarr (`empty_area`, `empty_area_pct`, `unlabelled_area_pct`, `undetected_cell_area_pct`, `empty_in_cells_area_pct`), `mean_area`/`mean_aspect_ratio`/`mean_perimeter` over the measured cells, pixel size and unit, `n_regions` and `measured_channels` (channel name -> index) |
 
-`PYMIF_ENDOMORPH_REGIONS` also writes `<id>_endomorph_empty_qc.json` to its work directory: the QC diagnostics of the empty-area (gap) estimation (`empty_channel_levels` = background, cell level and `floor_ratio` of every channel and whether it was used, `empty_gap_found`, `empty_n_gaps`, `empty_nucleus_channel`, `empty_nucleus_veto_area_pct`, `empty_threshold`, `empty_background_ratio`, `empty_seed_area_pct`, `empty_channels_used`, and the settings used). Check it before trusting the empty area of a new dataset: `empty_nucleus_channel` should be the `_clean` nuclear channel (e.g. `HOECHST_33342_clean`), and where gaps exist the `floor_ratio` of the used channels should be below about 0.55.
+`ZARRSMITH_ENDOMORPH_REGIONS` also writes `<id>_endomorph_empty_qc.json` to its work directory: the QC diagnostics of the empty-area (gap) estimation (`empty_channel_levels` = background, cell level and `floor_ratio` of every channel and whether it was used, `empty_gap_found`, `empty_n_gaps`, `empty_nucleus_channel`, `empty_nucleus_veto_area_pct`, `empty_threshold`, `empty_background_ratio`, `empty_seed_area_pct`, `empty_channels_used`, and the settings used). Check it before trusting the empty area of a new dataset: `empty_nucleus_channel` should be the `_clean` nuclear channel (e.g. `HOECHST_33342_clean`), and where gaps exist the `floor_ratio` of the used channels should be below about 0.55.
 
 Once all datasets are done, two merged files are written to
 `--merged_output_dir` (next to the launch `.sh` script):
@@ -310,8 +310,8 @@ rewrites them from the same inputs).
 ```bash
 module load Nextflow/25.10.1
 
-nextflow run /path/to/mif-resources/workflows/endo_morph/main.nf \
-    -lib /path/to/mif-resources/lib \
+nextflow run /path/to/nf-modules/workflows/endo_morph/main.nf \
+    -lib /path/to/nf-modules/lib \
     --input_csv /path/to/input.csv \
     -resume
 ```

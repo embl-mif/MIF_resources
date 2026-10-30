@@ -1,7 +1,7 @@
-process PYMIF_CLEAN_CHANNEL {
+process ZARRSMITH_CLEAN_CHANNEL {
     tag "${meta.id}"
     label 'process_high'
-    container 'ghcr.io/embl-mif/pymif:0.5.3'
+    container 'ghcr.io/embl-mif/zarrsmith:0.6.1'
 
     input:
     tuple val(meta), path(intensity_zarr), path(labels_zarr)
@@ -31,7 +31,7 @@ process PYMIF_CLEAN_CHANNEL {
         fi
         mkdir -p "\$(dirname "\$out")"
 
-        create_pymif_clean_channel.py \
+        create_zarrsmith_clean_channel.py \
             --intensity "${intensity_zarr}" \
             --labels "${labels_zarr}" \
             --output "${output_zarr}" \
@@ -47,7 +47,7 @@ process PYMIF_CLEAN_CHANNEL {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        pymif: \$(python -c 'from importlib.metadata import version; print(version("pymif"))' 2>/dev/null || echo "unknown")
+        zarrsmith: \$(python -c 'from importlib.metadata import version; print(version("zarrsmith"))' 2>/dev/null || echo "unknown")
     END_VERSIONS
     """
 }

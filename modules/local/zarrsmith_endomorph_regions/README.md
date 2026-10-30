@@ -1,4 +1,4 @@
-# PYMIF_ENDOMORPH_REGIONS
+# ZARRSMITH_ENDOMORPH_REGIONS
 
 Builds one label OME-Zarr with, for every cell not touching the image border, N nested edge-distance bands (`1`..`N` = R1..RN, any number N >= 1 of ring depths), plus the empty area (`N+1`) and not-imaged area (`N+2`) estimated from the fluorescence of the given channels. Empty and not-imaged pixels overwrite the bands. Makes no assumption about what the channels stain.
 

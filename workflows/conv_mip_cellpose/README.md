@@ -1,8 +1,8 @@
-# conv_mip_cellpose_edges
+# conv_mip_cellpose
 
 Runs each dataset through three stages:
 
-1. Convert to OME-Zarr with `pymif convert`.
+1. Convert to OME-Zarr with `zarrsmith convert`.
 2. Build a multiscale 2D maximum-intensity projection (MIP) over Z.
 3. Segment the MIP with Cellpose-SAM.
 
@@ -27,9 +27,9 @@ One dataset per row. Required column:
 | `resolution_level` | Pyramid level used for segmentation. Defaults to `--resolution_level` (0). |
 | `do_3D` | Any non-empty value enables 3D segmentation; leave blank to disable. |
 
-### Conversion columns (`pymif convert`)
+### Conversion columns (`zarrsmith convert`)
 
-Same set as [conv_cellpose](../conv_cellpose/README.md#conversion-columns-pymif-convert):
+Same set as [conv_cellpose](../conv_cellpose/README.md#conversion-columns-zarrsmith-convert):
 `microscope`, `chunk_size`, `max_size(MB)`, `scene_index`, `zarr_format`,
 `downscale_factor`, `channel_colors`, `channel_names`, `num_levels`, `subset`,
 `shards`, `shard_target_mb`, `shard_exclude_axes`. `chunk_size` takes
@@ -57,8 +57,8 @@ sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,sample_02.ome.zarr,,2,2
 ```bash
 module load Nextflow/25.10.1
 
-nextflow run /path/to/mif-resources/workflows/conv_mip_cellpose_edges/main.nf \
-    -lib /path/to/mif-resources/lib \
+nextflow run /path/to/nf-modules/workflows/conv_mip_cellpose/main.nf \
+    -lib /path/to/nf-modules/lib \
     --input_csv /path/to/input.csv \
     -resume
 ```
