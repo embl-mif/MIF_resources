@@ -8,15 +8,16 @@ against the converted image, writing one features CSV per dataset.
 
 ## Steps
 
-1. `PYMIF_CONVERSION` – convert the input to OME-Zarr (`pymif convert`). Skipped
+1. `ZARRSMITH_CONVERSION` – convert the input to OME-Zarr (`zarrsmith convert`). Skipped
    if the store already exists.
 2. `TILED_CELLPOSE_SAM_ZARR` (subworkflow) – segment the converted image tile
    by tile and merge the result into one intermediate label mask, kept only in
    the Nextflow work directory:
    1. `TILE_CONSTRUCTOR` – compute the tile grid (and optional ROI).
    2. `PREALLOCATE_ZARR` – pre-allocate the merged `uint32` label store.
-   3. `CELLPOSE_SAM_ZARR_MIF` – segment every tile on a GPU. Tiles already
-      published (see [Tile scratch](#tile-scratch)) are skipped.
+   3. `CELLPOSE_SAM_ZARR_MIF` – segment every tile on a GPU. With `-resume`,
+      tiles already segmented in a previous run are reused (see
+      [Tile segmentations](#tile-segmentations)).
    4. `FIND_TILE_NEIGHBORS` / `LOCAL_LABEL_MATCHER` – match labels between
       neighbouring tiles.
    5. `LABEL_SOLVER` – solve the label-matching graph into a global mapping.
@@ -24,10 +25,10 @@ against the converted image, writing one features CSV per dataset.
    7. `POPULATE_PYRAMID` – fill pyramid levels 1..N of the merged mask from
       the fully written level 0 (nearest-neighbour `Sample`, so label ids are
       preserved).
-3. `PYMIF_CONVERSION` (zarr → zarr) – convert the intermediate mask into the
+3. `ZARRSMITH_CONVERSION` (zarr → zarr) – convert the intermediate mask into the
    final label OME-Zarr (`labels_output_final`) with the metadata of the
    converted OME-Zarr.
-4. `PYMIF_FEATURE_EXTRACTION` – measure the label OME-Zarr against the
+4. `ZARRSMITH_FEATURE_EXTRACTION` – measure the label OME-Zarr against the
    converted OME-Zarr (`skimage.measure.regionprops`) and write a features CSV.
    Runs per dataset once its labels are complete.
 
@@ -44,33 +45,33 @@ path, or blank to use the default.
 | CSV column | Required | Default if not set | Description |
 | --- | --- | --- | --- |
 | `input` | **yes** | – | Path to the input microscopy dataset. |
-| `dataset_id` | no | `<input basename>_<row number>` | Identifier used in task names and default output names. Keep it unique: it also names the per-tile scratch directory. |
+| `dataset_id` | no | `<input basename>_<row number>` | Identifier used in task names and default output names. Keep it unique within the CSV. |
 
-### 1. Conversion (`pymif convert`)
+### 1. Conversion (`zarrsmith convert`)
 
 Convert the input into the OME-Zarr used by every later step. All columns are
-optional; unset ones are not passed to `pymif`, so its own defaults apply. The
+optional; unset ones are not passed to `zarrsmith`, so its own defaults apply. The
 same `num_levels`, `downscale_factor`, `zarr_format`, ... are reused when the final
 label OME-Zarr is built, so labels and image share the pyramid.
 
 | CSV column | Default if not set | Description |
 | --- | --- | --- |
 | `output` | `<dataset_id>.ome.zarr` in the work dir | Path of the converted OME-Zarr. Absolute path to keep it. Skipped if the store already exists. |
-| `microscope` | auto-detected by pymif | Microscope/format of the input (`luxendo`, `opera`, `viventis`, `zeiss`, `zarrv04`, `zarr`, `scape`). |
-| `chunk_size` | derived by pymif | Chunk size in `TCZYX` order (or the axes present), space-separated, e.g. `1 1 1 512 512`. Takes precedence over `max_size(MB)`. |
-| `max_size(MB)` | pymif default | Maximum chunk size in MB. Ignored if `chunk_size` is set. |
-| `scene_index` | pymif default | Scene to convert for multi-scene files (`.czi`). |
-| `zarr_format` | pymif default | `2` (NGFF 0.4) or `3` (NGFF 0.5). |
-| `num_levels` | pymif default | Number of pyramid levels. |
-| `downscale_factor` | pymif default | Pyramid downsampling factor: one value (isotropic) or three (`Z Y X`). |
+| `microscope` | auto-detected by zarrsmith | Microscope/format of the input (`luxendo`, `opera`, `viventis`, `zeiss`, `zarrv04`, `zarr`, `scape`). |
+| `chunk_size` | derived by zarrsmith | Chunk size in `TCZYX` order (or the axes present), space-separated, e.g. `1 1 1 512 512`. Takes precedence over `max_size(MB)`. |
+| `max_size(MB)` | zarrsmith default | Maximum chunk size in MB. Ignored if `chunk_size` is set. |
+| `scene_index` | zarrsmith default | Scene to convert for multi-scene files (`.czi`). |
+| `zarr_format` | zarrsmith default | `2` (NGFF 0.4) or `3` (NGFF 0.5). |
+| `num_levels` | zarrsmith default | Number of pyramid levels. |
+| `downscale_factor` | zarrsmith default | Pyramid downsampling factor: one value (isotropic) or three (`Z Y X`). |
 | `subset` | none (whole image) | Crop before building the pyramid, e.g. `y=10:100:2;x=20:80`. |
-| `channel_names` | pymif default | Channel names, space- or comma-separated. |
-| `channel_colors` | pymif default | Channel colours (hex or matplotlib names). |
+| `channel_names` | zarrsmith default | Channel names, space- or comma-separated. |
+| `channel_colors` | zarrsmith default | Channel colours (hex or matplotlib names). |
 | `shards` | `auto` (zarr v3) | Shard shape, `auto`, or `none` to disable sharding. |
-| `shard_target_mb` | pymif default (1024) | Target shard size when `shards` is `auto`. |
+| `shard_target_mb` | zarrsmith default (1024) | Target shard size when `shards` is `auto`. |
 | `shard_exclude_axes` | `t c` | Axes never merged into a shard; `none` lets every axis merge. |
-| `num_workers` | pymif default | Threads used to write the zarr. |
-| `drop_singleton` | `false` (workflow default) | Drop singleton `t`/`c`/`z` axes. Kept `false` here (pymif's own default is `true`) because downstream steps expect the full axis layout. |
+| `num_workers` | zarrsmith default | Threads used to write the zarr. |
+| `drop_singleton` | `false` (workflow default) | Drop singleton `t`/`c`/`z` axes. Kept `false` here (zarrsmith's own default is `true`) because downstream steps expect the full axis layout. |
 
 See [conv_cellpose](../conv_cellpose/README.md) for more detail on these
 columns.
@@ -108,7 +109,7 @@ All columns are optional.
 | `labels_output_final` | `<dataset_id>_merged_mask.ome.zarr` in the work dir | Path of the final label OME-Zarr. Absolute path to keep it. |
 
 The tiles are merged into an *intermediate* label mask (pyramid filled by `POPULATE_PYRAMID`) that is
-only kept in the Nextflow work directory. `PYMIF_CONVERSION` (zarr → zarr)
+only kept in the Nextflow work directory. `ZARRSMITH_CONVERSION` (zarr → zarr)
 then converts it into `labels_output_final`, a multiscale label OME-Zarr that
 reuses the conversion settings (axes, scales, pyramid levels, zarr format) of
 the converted image. Do **not** name a CSV column `labels_output`: that would
@@ -152,21 +153,21 @@ sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,,,,,,25,0,False,,,
 | `--multicut_beta` | `0.5` | `LABEL_SOLVER` edge-cut trade-off. |
 | `--cellpose_model_path` | none | Custom pretrained Cellpose model. Defaults to Cellpose-SAM. |
 
-## Tile scratch
+## Tile segmentations
 
-Per-tile segmentations are hard-linked to
-`/scratch/$USER/cellpose_tiles_published/<dataset_id>/`. On `-resume` (or a
-re-run), already-segmented tiles are skipped. The directory is not cleaned up
-automatically: delete it yourself once the dataset is done. Two concurrent runs of the same
-`dataset_id` share (and can corrupt) this directory.
+Per-tile segmentations are kept only in the Nextflow work directory. Relaunch
+with `-resume` (from the same launch directory, without cleaning the work
+directory) to reuse tiles that already finished. They are not cleaned up
+automatically: once the final labels and features are checked, remove them
+with `nextflow clean` or by deleting the work directory.
 
 ## Running the workflow
 
 ```bash
 module load Nextflow/25.10.1
 
-nextflow run /path/to/mif-resources/workflows/org_facs/main.nf \
-    -lib /path/to/mif-resources/lib \
+nextflow run /path/to/nf-modules/workflows/org_facs/main.nf \
+    -lib /path/to/nf-modules/lib \
     --input_csv /path/to/input.csv \
     --cellpose_model_path /g/mif-hd/shared/cellpose_models/cpsam \
     -resume

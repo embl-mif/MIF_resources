@@ -1,12 +1,9 @@
-# conv_mip_cellpose_filter_mask_cellpose
+# conv_mip_cpsam_filt_mask_cpsam
 
-Identical to
-[conv_mip_label_filter_mask_cellpose](../conv_mip_label_filter_mask_cellpose/README.md)
-except the seed segmentation step: instead of Otsu-thresholding one channel,
-this workflow runs a first Cellpose-SAM pass on one or more MIP channels.
+This workflow runs a first Cellpose-SAM pass on one or more MIP channels.
 Runs each dataset through seven stages:
 
-1. Convert to OME-Zarr with `pymif convert`.
+1. Convert to OME-Zarr with `zarrsmith convert`.
 2. Build a multiscale 2D maximum-intensity projection (MIP) over Z.
 3. Segment `seed_channels` of the MIP with Cellpose-SAM (at resolution level
    `0`) to get the seed labels.
@@ -23,8 +20,7 @@ Runs each dataset through seven stages:
    `cellpose_channels`.
 
 Two Cellpose-SAM (GPU) runs happen per dataset — once for the seed
-segmentation, once for the final one — so expect roughly double the GPU time
-of `conv_mip_label_filter_mask_cellpose` per dataset.
+segmentation, once for the final one.
 
 ## Input CSV
 
@@ -119,9 +115,9 @@ index together with any other channel in `cellpose_channels` below.
 | `use_physical_units` | `true` to interpret sizes in physical units. Defaults to `false`. |
 | `do_3D` | Any non-empty value enables 3D segmentation; leave blank to disable. |
 
-### Conversion columns (`pymif convert`)
+### Conversion columns (`zarrsmith convert`)
 
-Same set as [conv_cellpose](../conv_cellpose/README.md#conversion-columns-pymif-convert):
+Same set as [conv_cellpose](../conv_cellpose/README.md#conversion-columns-zarrsmith-convert):
 `microscope`, `chunk_size`, `max_size(MB)`, `scene_index`, `zarr_format`,
 `downscale_factor`, `channel_colors`, `channel_names`, `num_levels`, `subset`,
 `shards`, `shard_target_mb`, `shard_exclude_axes`. `chunk_size` takes
@@ -150,8 +146,8 @@ sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,sample_02.ome.zarr,,2,2
 ```bash
 module load Nextflow/25.10.1
 
-nextflow run /path/to/mif-resources/workflows/conv_mip_cellpose_filter_mask_cellpose/main.nf \
-    -lib /path/to/mif-resources/lib \
+nextflow run /path/to/nf-modules/workflows/conv_mip_cpsam_filt_mask_cpsam/main.nf \
+    -lib /path/to/nf-modules/lib \
     --input_csv /path/to/input.csv \
     -resume
 ```

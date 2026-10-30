@@ -55,7 +55,7 @@ process PREALLOCATE_ZARR {
     // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
     // NOTE: no `def` here -- a `def`-scoped variable is invisible to the output: block's
     // own evaluation, so path(output_zarr_link) would look for a literal file named
-    // "output_zarr_link" instead of resolving to this value (see PYMIF_CONVERSION for
+    // "output_zarr_link" instead of resolving to this value (see ZARRSMITH_CONVERSION for
     // the same pattern done correctly).
     output_zarr_link = new File(output_zarr.toString()).name
 

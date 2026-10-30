@@ -31,9 +31,9 @@ One dataset per row. Required column:
 | `x_min`, `x_max`, `y_min`, `y_max`, `z_min`, `z_max` | Restrict segmentation to a region of interest. |
 | `do_3D` | `true` to enable 3D segmentation. Defaults to `false`. |
 
-### Conversion columns (`pymif convert`)
+### Conversion columns (`zarrsmith convert`)
 
-| CSV column | PyMIF argument |
+| CSV column | ZarrSmith argument |
 | --- | --- |
 | `microscope` | `--microscope` |
 | `chunk_size` | `--chunk_size` |
@@ -80,8 +80,8 @@ sample_02,/g/mif-hd/shared/data/sample_02.ome.tiff,opera,,,2,25,0,False,
 ```bash
 module load Nextflow/25.10.1
 
-nextflow run /path/to/mif-resources/workflows/conv_cellpose/main.nf \
-    -lib /path/to/mif-resources/lib \
+nextflow run /path/to/nf-modules/workflows/conv_cellpose/main.nf \
+    -lib /path/to/nf-modules/lib \
     --input_csv /path/to/input.csv \
     -resume
 ```

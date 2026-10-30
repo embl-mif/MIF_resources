@@ -2,16 +2,16 @@
 
 nextflow.enable.dsl = 2
 
-include { PYMIF_CONVERSION                        } from '../../modules/local/pymif_conversion/main'
-include { PYMIF_MIP                               } from '../../modules/local/pymif_mip/main'
-include { PYMIF_FEATURE_EXTRACTION                } from '../../modules/local/pymif_feature_extraction/main'
-include { PYMIF_FILTER                            } from '../../modules/local/pymif_filter/main'
-include { PYMIF_CLEAN_CHANNEL                     } from '../../modules/local/pymif_clean_channel/main'
+include { ZARRSMITH_CONVERSION                    } from '../../modules/local/zarrsmith_conversion/main'
+include { ZARRSMITH_MIP                           } from '../../modules/local/zarrsmith_mip/main'
+include { ZARRSMITH_FEATURE_EXTRACTION            } from '../../modules/local/zarrsmith_feature_extraction/main'
+include { ZARRSMITH_FILTER                        } from '../../modules/local/zarrsmith_filter/main'
+include { ZARRSMITH_CLEAN_CHANNEL                 } from '../../modules/local/zarrsmith_clean_channel/main'
 include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_SEED  } from '../../modules/local/cellpose_sam_zarr_mif/main'
 include { CELLPOSE_SAM_ZARR_MIF as CELLPOSE_FINAL } from '../../modules/local/cellpose_sam_zarr_mif/main'
-include { PYMIF_ENDOMORPH_REGIONS                 } from '../../modules/local/pymif_endomorph_regions/main'
-include { PYMIF_ENDOMORPH_FEATURES                } from '../../modules/local/pymif_endomorph_features/main'
-include { PYMIF_ENDOMORPH_MERGE                   } from '../../modules/local/pymif_endomorph_merge/main'
+include { ZARRSMITH_ENDOMORPH_REGIONS             } from '../../modules/local/zarrsmith_endomorph_regions/main'
+include { ZARRSMITH_ENDOMORPH_FEATURES            } from '../../modules/local/zarrsmith_endomorph_features/main'
+include { ZARRSMITH_ENDOMORPH_MERGE               } from '../../modules/local/zarrsmith_endomorph_merge/main'
 
 workflow {
     def repoRootDir = workflow.projectDir.getParent().getParent()
@@ -32,7 +32,7 @@ workflow {
 
     def row_index = new java.util.concurrent.atomic.AtomicInteger(0)
 
-    pymif_inputs_ch = Channel
+    zarrsmith_inputs_ch = Channel
         .fromPath(params.input_csv, checkIfExists: true)
         .splitCsv(header: true)
         .map { row ->
@@ -72,7 +72,7 @@ workflow {
             tuple(meta, input_dataset)
         }
 
-    PYMIF_CONVERSION(pymif_inputs_ch)
+    ZARRSMITH_CONVERSION(zarrsmith_inputs_ch)
 
     def boolOrFalse = { value ->
         def text = Utils.normalizeOptionalText(value)
@@ -215,13 +215,13 @@ workflow {
         ]
     }
 
-    PYMIF_MIP(
-        PYMIF_CONVERSION.out.zarr.map { meta, zarr_path ->
+    ZARRSMITH_MIP(
+        ZARRSMITH_CONVERSION.out.zarr.map { meta, zarr_path ->
             tuple(meta + [zarr_output: meta.mip_output], zarr_path)
         }
     )
 
-    ch_mip = PYMIF_MIP.out.zarr
+    ch_mip = ZARRSMITH_MIP.out.zarr
 
     ch_seed_inputs = ch_mip
         .map { meta, zarr_path ->
@@ -238,26 +238,26 @@ workflow {
         .join(ch_seed_labels)
         .map { id, features_meta, intensity, labels -> tuple(features_meta, intensity, labels) }
 
-    PYMIF_FEATURE_EXTRACTION(ch_features_inputs)
+    ZARRSMITH_FEATURE_EXTRACTION(ch_features_inputs)
 
     ch_filter_inputs = ch_mip
         .map { meta, zarr -> tuple(meta.id, filterMeta(meta)) }
         .join(ch_seed_labels)
-        .join(PYMIF_FEATURE_EXTRACTION.out.csv.map { meta, csv -> tuple(meta.id, csv) })
+        .join(ZARRSMITH_FEATURE_EXTRACTION.out.csv.map { meta, csv -> tuple(meta.id, csv) })
         .map { id, filter_meta, labels, csv -> tuple(filter_meta, labels, csv) }
 
-    PYMIF_FILTER(ch_filter_inputs)
+    ZARRSMITH_FILTER(ch_filter_inputs)
 
     ch_clean_inputs = ch_mip
         .map { meta, intensity -> tuple(meta.id, cleanMeta(meta), intensity) }
-        .join(PYMIF_FILTER.out.zarr_csv.map { meta, labels, csv -> tuple(meta.id, labels) })
+        .join(ZARRSMITH_FILTER.out.zarr_csv.map { meta, labels, csv -> tuple(meta.id, labels) })
         .map { id, clean_meta, intensity, labels -> tuple(clean_meta, intensity, labels) }
 
-    PYMIF_CLEAN_CHANNEL(ch_clean_inputs)
+    ZARRSMITH_CLEAN_CHANNEL(ch_clean_inputs)
 
     ch_final_inputs = ch_mip
         .map { meta, zarr -> tuple(meta.id, meta) }
-        .join(PYMIF_CLEAN_CHANNEL.out.zarr.map { meta, zarr_path -> tuple(meta.id, zarr_path) })
+        .join(ZARRSMITH_CLEAN_CHANNEL.out.zarr.map { meta, zarr_path -> tuple(meta.id, zarr_path) })
         .map { id, meta, zarr_path ->
             def (local_image, image_uri) = Utils.splitImageInput(zarr_path, noImageSentinel)
             tuple(finalMeta(meta), local_image, image_uri)
@@ -270,27 +270,27 @@ workflow {
     ch_regions_inputs = ch_mip
         .map { meta, mip -> tuple(meta.id, regionsMeta(meta), mip) }
         .join(ch_final_labels)
-        .join(PYMIF_CLEAN_CHANNEL.out.zarr.map { meta, clean -> tuple(meta.id, clean) })
+        .join(ZARRSMITH_CLEAN_CHANNEL.out.zarr.map { meta, clean -> tuple(meta.id, clean) })
         .map { id, regions_meta, mip, labels, clean -> tuple(regions_meta, labels, mip, clean) }
 
-    PYMIF_ENDOMORPH_REGIONS(ch_regions_inputs)
+    ZARRSMITH_ENDOMORPH_REGIONS(ch_regions_inputs)
 
     ch_endomorph_inputs = ch_mip
         .map { meta, mip -> tuple(meta.id, endomorphFeaturesMeta(meta), mip) }
         .join(ch_final_labels)
-        .join(PYMIF_ENDOMORPH_REGIONS.out.zarr.map { meta, regions -> tuple(meta.id, regions) })
+        .join(ZARRSMITH_ENDOMORPH_REGIONS.out.zarr.map { meta, regions -> tuple(meta.id, regions) })
         .map { id, features_meta, mip, labels, regions -> tuple(features_meta, mip, labels, regions) }
 
-    PYMIF_ENDOMORPH_FEATURES(ch_endomorph_inputs)
+    ZARRSMITH_ENDOMORPH_FEATURES(ch_endomorph_inputs)
 
     def merged_dir = (params.merged_output_dir ?: workflow.launchDir).toString()
     if (!new File(merged_dir).isAbsolute()) {
         throw new IllegalArgumentException("--merged_output_dir must be an absolute path: got '${merged_dir}'")
     }
 
-    PYMIF_ENDOMORPH_MERGE(
-        PYMIF_ENDOMORPH_FEATURES.out.csv.map { meta, cells, summary -> cells }.collect(),
-        PYMIF_ENDOMORPH_FEATURES.out.csv.map { meta, cells, summary -> summary }.collect(),
+    ZARRSMITH_ENDOMORPH_MERGE(
+        ZARRSMITH_ENDOMORPH_FEATURES.out.csv.map { meta, cells, summary -> cells }.collect(),
+        ZARRSMITH_ENDOMORPH_FEATURES.out.csv.map { meta, cells, summary -> summary }.collect(),
         merged_dir
     )
 }

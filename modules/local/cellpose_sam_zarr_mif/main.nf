@@ -54,7 +54,7 @@ process CELLPOSE_SAM_ZARR_MIF {
     maxRetries 2
     
     // Set up environment
-    container "docker://registry.git.embl.org/grp-cba/containers/cellposesam-zarr:4.1.1"
+    container "ghcr.io/embl-mif/cellpose_zarr:4.1.1"
 
     input:
     tuple val(meta), path(local_image), val(image_uri)

@@ -1,0 +1,53 @@
+process ZARRSMITH_MIP {
+    tag "${meta.id}"
+    label 'process_medium'
+    container 'ghcr.io/embl-mif/zarrsmith:0.6.1'
+
+    input:
+    tuple val(meta), path(input_zarr)
+
+    output:
+    tuple val(meta), path(output_mip_link), emit: zarr
+    path "versions.yml"                   , emit: versions
+
+    script:
+    output_mip = meta.zarr_output ?: "${meta.id}_mip.ome.zarr"
+    // A `path` output must live in the work dir: an absolute output is exposed there as a
+    // symlink named after it (see Utils.shellLinkOutput), a relative one is the output itself.
+    output_mip_link = new File(output_mip.toString()).name
+
+    def shellQuote = { value ->
+        "'${value.toString().replace("'", "'\"'\"'")}'"
+    }
+
+    // Keep this script indented with spaces only: Nextflow dedents it, and stray tabs
+    // leave the END_VERSIONS heredoc terminator indented, so bash never closes it.
+    """
+    out=${shellQuote(output_mip)}
+    if [ -d "\$out" ] && { grep -q '"ome"' "\$out/zarr.json" 2>/dev/null || grep -q '"multiscales"' "\$out/.zattrs" 2>/dev/null; }; then
+        echo "Output already exists, skipping mip: ${output_mip}"
+    else
+        if [ -e "\$out" ]; then
+            echo "Incomplete output found (no OME metadata), removing: ${output_mip}"
+            rm -rf "\$out"
+        fi
+        mkdir -p "\$(dirname "\$out")"
+
+        create_zarrsmith_mip.py \
+            --input "${input_zarr}" \
+            --output "${output_mip}"
+    fi
+
+    if [ ! -e ${shellQuote(output_mip)}/zarr.json ] && [ ! -e ${shellQuote(output_mip)}/.zgroup ]; then
+        echo "ERROR: expected zarr store not found: ${output_mip}" >&2
+        exit 1
+    fi
+
+    ${Utils.shellLinkOutput(output_mip)}
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        zarrsmith: \$(python -c 'from importlib.metadata import version; print(version("zarrsmith"))' 2>/dev/null || echo "unknown")
+    END_VERSIONS
+    """
+}

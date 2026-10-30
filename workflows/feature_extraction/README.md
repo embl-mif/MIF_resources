@@ -1,12 +1,11 @@
 # feature_extraction
 
-Loads an intensity OME-Zarr and a label OME-Zarr with PyMIF, measures every
+Loads an intensity OME-Zarr and a label OME-Zarr with ZarrSmith, measures every
 label against every requested intensity channel with
 `skimage.measure.regionprops`, and writes one CSV of features per dataset.
 It is independent of how the labels were produced, so it can be run after
 any of this repo's segmentation workflows (`conv_cellpose`,
-`conv_mip_cellpose`, `conv_mip_label_filter_mask_cellpose`, `conv_tiled_cellpose`,
-`ilastik_*`, `ultrack`, ...), or against any other OME-Zarr label store.
+`conv_mip_cellpose`, `ilastik_*`, `ultrack`, ...), or against any other OME-Zarr label store.
 
 ## Input CSV
 
@@ -61,8 +60,8 @@ sample_02,/scratch/user/mip/sample_02_mip.ome.zarr,/scratch/user/labels/sample_0
 ```bash
 module load Nextflow/25.10.1
 
-nextflow run /path/to/mif-resources/workflows/feature_extraction/main.nf \
-    -lib /path/to/mif-resources/lib \
+nextflow run /path/to/nf-modules/workflows/feature_extraction/main.nf \
+    -lib /path/to/nf-modules/lib \
     --input_csv /path/to/input.csv \
     -resume
 ```

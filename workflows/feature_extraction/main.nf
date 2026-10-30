@@ -2,7 +2,7 @@
 
 nextflow.enable.dsl = 2
 
-include { PYMIF_FEATURE_EXTRACTION } from '../../modules/local/pymif_feature_extraction/main'
+include { ZARRSMITH_FEATURE_EXTRACTION } from '../../modules/local/zarrsmith_feature_extraction/main'
 
 workflow {
 
@@ -45,6 +45,6 @@ workflow {
             tuple(meta, intensity_zarr, labels_zarr)
         }
 
-    PYMIF_FEATURE_EXTRACTION(feature_inputs_ch)
+    ZARRSMITH_FEATURE_EXTRACTION(feature_inputs_ch)
 
 }

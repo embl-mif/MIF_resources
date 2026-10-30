@@ -2,9 +2,9 @@
 
 nextflow.enable.dsl = 2
 
-include { PYMIF_CONVERSION         } from '../../modules/local/pymif_conversion/main'
-include { TILED_CELLPOSE_SAM_ZARR  } from '../../subworkflows/local/tiled_cellpose_sam_zarr/main'
-include { PYMIF_FEATURE_EXTRACTION } from '../../modules/local/pymif_feature_extraction/main'
+include { ZARRSMITH_CONVERSION         } from '../../modules/local/zarrsmith_conversion/main'
+include { TILED_CELLPOSE_SAM_ZARR      } from '../../subworkflows/local/tiled_cellpose_sam_zarr/main'
+include { ZARRSMITH_FEATURE_EXTRACTION } from '../../modules/local/zarrsmith_feature_extraction/main'
 
 workflow {
     def default_features_dir = "${file(params.outdir)}/measurements"
@@ -22,7 +22,7 @@ workflow {
     input_csv_ch = Channel
         .fromPath(params.input_csv, checkIfExists: true)
 
-    pymif_inputs_ch = input_csv_ch
+    zarrsmith_inputs_ch = input_csv_ch
         .splitCsv(header: true)
         .map { row ->
             def index = row_index.getAndIncrement()
@@ -37,9 +37,9 @@ workflow {
             tuple(row + [id: dataset_id, zarr_output: zarr_output], input_dataset)
         }
 
-    PYMIF_CONVERSION(pymif_inputs_ch)
+    ZARRSMITH_CONVERSION(zarrsmith_inputs_ch)
 
-    ch_images = PYMIF_CONVERSION.out.zarr
+    ch_images = ZARRSMITH_CONVERSION.out.zarr
 
     def withCellposeSettings = { meta ->
         def tile_size_x  = Utils.normalizeOptionalText(meta.tile_size_x)
@@ -129,6 +129,6 @@ workflow {
             tuple(features_meta, intensity, labels)
         }
 
-    PYMIF_FEATURE_EXTRACTION(feature_inputs_ch)
+    ZARRSMITH_FEATURE_EXTRACTION(feature_inputs_ch)
 
 }

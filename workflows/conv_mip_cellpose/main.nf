@@ -2,8 +2,8 @@
 
 nextflow.enable.dsl = 2
 
-include { PYMIF_CONVERSION      } from '../../modules/local/pymif_conversion/main'
-include { PYMIF_MIP             } from '../../modules/local/pymif_mip/main'
+include { ZARRSMITH_CONVERSION  } from '../../modules/local/zarrsmith_conversion/main'
+include { ZARRSMITH_MIP         } from '../../modules/local/zarrsmith_mip/main'
 include { CELLPOSE_SAM_ZARR_MIF } from '../../modules/local/cellpose_sam_zarr_mif/main'
 
 
@@ -37,7 +37,7 @@ workflow {
     // Stage 1: conversion. All three output paths are resolved here so a bad or
     // missing path fails before any task runs. Each stage then overrides
     // zarr_output on the meta it consumes, so no stage writes over the previous one.
-    pymif_inputs_ch = Channel
+    zarrsmith_inputs_ch = Channel
         .fromPath(params.input_csv, checkIfExists: true)
         .splitCsv(header: true)
         .map { row ->
@@ -61,18 +61,18 @@ workflow {
             tuple(meta, input_dataset)
         }
 
-    PYMIF_CONVERSION(pymif_inputs_ch)
+    ZARRSMITH_CONVERSION(zarrsmith_inputs_ch)
 
     // Stage 2: MIP writes its own store.
-    PYMIF_MIP(
-        PYMIF_CONVERSION.out.zarr.map { meta, zarr_path ->
+    ZARRSMITH_MIP(
+        ZARRSMITH_CONVERSION.out.zarr.map { meta, zarr_path ->
             tuple(meta + [zarr_output: meta.mip_output], zarr_path)
         }
     )
 
     // Stage 3: Cellpose. Own meta with only the keys the module reads, and
     // zarr_output set to the labels path.
-    ch_cellpose_inputs = PYMIF_MIP.out.zarr
+    ch_cellpose_inputs = ZARRSMITH_MIP.out.zarr
         .map { meta, zarr_path ->
             def (local_image, image_uri) = Utils.splitImageInput(
                 zarr_path,
